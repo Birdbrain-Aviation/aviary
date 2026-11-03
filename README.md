@@ -21,6 +21,25 @@ Grab the latest build from the [Releases page](https://github.com/Birdbrain-Avia
 
 The full user guide is [`docs/Read me.html`](docs/Read%20me.html) (it's also included in the download).
 
+### Antivirus warnings
+
+Windows will probably warn you about the apps, and some antivirus programs may block them. That's because the `.exe` files aren't code-signed (a signing certificate costs money every year), and small unsigned programs that open network ports and talk to serial devices tend to get flagged by default. It's a false positive, but you shouldn't just take my word for it. Here's what you'll see and what to do:
+
+- **"Windows protected your PC" (SmartScreen):** click **More info**, check that the file is `Owl.exe`, `Heron.exe` or `Mockingbird.exe`, then **Run anyway**. This only happens the first time.
+- **Windows Defender quarantines or removes a file:** open Windows Security, go to **Virus & threat protection > Protection history**, find the Aviary file, and choose **Restore**. If it keeps happening, add an exclusion for just the Aviary folder (not your whole drive).
+- **Avast, AVG, Norton and others:** restore the file from the program's quarantine and add the Aviary folder as an exception.
+- **Your browser blocks the download:** open your downloads list and choose **Keep**.
+
+If you'd rather not trust a prebuilt download:
+
+- Compare the file's SHA-256 checksum with the one listed on the release page. In PowerShell: `Get-FileHash .\Aviary-1.1.0-windows.zip`
+- Upload the file to [VirusTotal](https://www.virustotal.com) to see what dozens of scanners say. One or two generic flags on an unsigned Go program is normal.
+- Build it yourself from this source (see [Building from source](#building-from-source)). It's the same code.
+
+Don't turn your antivirus off to run Aviary. Allowing the one folder is enough.
+
+If you hit a false positive, you can report it to Microsoft at [microsoft.com/wdsi/filesubmission](https://www.microsoft.com/wdsi/filesubmission), which usually clears it for everyone after review.
+
 ## Mockingbird
 
 ![Mockingbird after a passing test](docs/screenshots/mockingbird.png)
