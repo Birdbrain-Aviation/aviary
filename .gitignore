@@ -1,0 +1,12 @@
+# build output (release files go on the GitHub Releases page, not in the repo)
+build/
+*.exe
+*.tar.gz
+*.zip
+# Windows resources made by build-windows.sh from the SVG icons
+cmd/*/rsrc_windows_*.syso
+# test screenshots and scratch
+tests/shots/
+node_modules/
+__pycache__/
+.DS_Store

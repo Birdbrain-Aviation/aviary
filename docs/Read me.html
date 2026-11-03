@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aviary read me</title>
+<style>
+  :root { --bg: #eef1f0; --panel: #fbfcfb; --ink: #16202a; --graphite: #56626c; --rule: #cdd5d8; --orange: #ff5a1f; --orange-ink: #b23a0b; --caution: #a8690f; --caution-wash: #fbefd9; --code: #f4f6f5; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0f161c; --panel: #151e26; --ink: #e4eaee; --graphite: #9aa8b2; --rule: #26323c; --orange: #ff6a33; --orange-ink: #ff8a5c; --caution: #e0a33a; --caution-wash: #33270f; --code: #1b2630; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 "Bahnschrift", "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 900px; margin: 0 auto; padding: 32px 24px 64px; }
+  header { border-bottom: 3px solid var(--orange); padding-bottom: 14px; margin-bottom: 8px; }
+  h1 { font-size: 34px; margin: 0; font-stretch: 87.5%; }
+  .lede { font-size: 18px; color: var(--graphite); margin: 6px 0 0; }
+  h2 { font-size: 24px; margin: 40px 0 8px; padding-top: 8px; border-top: 1px solid var(--rule); font-stretch: 87.5%; }
+  h3 { font-size: 18px; margin: 24px 0 6px; }
+  p, li { max-width: 74ch; }
+  a { color: var(--orange-ink); }
+  code, pre, kbd { font-family: "Cascadia Mono", Consolas, monospace; font-size: 14px; }
+  code { background: var(--code); padding: 1px 5px; border-radius: 3px; }
+  pre { background: var(--code); border: 1px solid var(--rule); border-radius: 4px; padding: 12px 14px; overflow: auto; line-height: 1.45; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; background: var(--panel); font-size: 15px; }
+  th, td { text-align: left; vertical-align: top; padding: 7px 10px; border-bottom: 1px solid var(--rule); }
+  th { color: var(--graphite); font-weight: 600; font-size: 14px; }
+  .apps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 18px 0; }
+  .app { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; }
+  .app b { font-size: 19px; display: block; margin-bottom: 4px; }
+  .app p { margin: 0; color: var(--graphite); font-size: 15px; }
+  .safety { border-left: 5px solid var(--caution); background: var(--caution-wash); padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; }
+  .toc { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(5, auto); grid-auto-flow: column; column-gap: 24px; padding-left: 20px; }
+  .toc li { margin: 2px 0; }
+  ol li, ul li { margin: 5px 0; }
+  .muted { color: var(--graphite); }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>Aviary: Mockingbird, Heron and Owl</h1>
+  <p class="lede">Three Windows apps for any rocket: test the flight computer before it flies, follow the flight live, and analyse the log afterwards.</p>
+</header>
+
+<div class="apps">
+  <div class="app"><b>Mockingbird</b><p>Tests your flight computer's firmware. It simulates a flight, streams the sensor readings to your board over USB, reacts to the pyro channels your code fires, and grades every deployment and ignition, with faults injected on purpose.</p></div>
+  <div class="app"><b>Heron</b><p>Analyses flight logs from any flight computer, OpenRocket export, Owl recording or Mockingbird run: events, key numbers, model against flight, drag coefficient, and flights compared side by side.</p></div>
+  <div class="app"><b>Owl</b><p>A ground station for live telemetry from any radio or Wi-Fi board: altitude, speed, flight phase, voice callouts, and GPS recovery with a map, compass and a QR code for your phone.</p></div>
+</div>
+
+<ol class="toc">
+  <li><a href="#start">Getting started</a></li>
+  <li><a href="#files">Where things are saved</a></li>
+  <li><a href="#rockets">Rocket profiles</a></li>
+  <li><a href="#mockingbird">Mockingbird</a></li>
+  <li><a href="#library">The Arduino library</a></li>
+  <li><a href="#heron">Heron</a></li>
+  <li><a href="#owl">Owl</a></li>
+  <li><a href="#safety">Safety</a></li>
+  <li><a href="#trouble">Troubleshooting</a></li>
+  <li><a href="#source">Source code</a></li>
+</ol>
+
+<h2 id="start">Getting started</h2>
+<ol>
+  <li>Unzip the whole folder somewhere permanent, such as <code>Documents\Aviary Apps</code>. Don't run the apps from inside the zip.</li>
+  <li>Double-click <b>Mockingbird.exe</b>, <b>Heron.exe</b> or <b>Owl.exe</b>.</li>
+  <li>The first time, Windows may show <i>Windows protected your PC</i>, because the apps aren't signed by a company. Click <b>More info</b>, then <b>Run anyway</b>.</li>
+</ol>
+<p>Each app opens in its own window. The window is drawn by Microsoft Edge, which every Windows 10 and 11 PC has (Google Chrome works too), and that is also how the apps reach USB serial ports. Close the window to quit the app. Opening an app that is already running just brings up its window.</p>
+<p>To keep the apps handy, right-click each <b>.exe</b> and choose <b>Pin to Start</b>, or <b>Send to › Desktop</b> for a shortcut. Don't pin the app's window from the taskbar: that pins the page, which only works while the app is running.</p>
+<p>New to all three? Open Mockingbird and press <b>Try it with the virtual flight computer</b>. Then open Owl, choose <b>Connect › Demo flight</b>, and finally open Heron and press <b>Try a sample flight</b>.</p>
+
+<h2 id="files">Where things are saved</h2>
+<table>
+  <tr><th>What</th><th>Where</th></tr>
+  <tr><td>Owl recordings, Mockingbird runs, logs you open in Heron, motor files</td><td><code>Documents\Aviary</code> (folders <i>Owl Recordings</i>, <i>Mockingbird Runs</i>, <i>Heron Library</i>, <i>Motors</i>)</td></tr>
+  <tr><td>Rocket profiles and each app's settings</td><td><code>%AppData%\Aviary</code></td></tr>
+  <tr><td>Saved map tiles and app logs</td><td><code>%LocalAppData%\Aviary</code></td></tr>
+</table>
+<p>Heron lists everything Owl and Mockingbird save, so there's nothing to copy between apps.</p>
+
+<h2 id="rockets">Rocket profiles</h2>
+<p>All three apps share one list of rockets, edited on Mockingbird's <b>Rocket</b> tab. A profile has:</p>
+<ul>
+  <li><b>Stages</b>: dry mass, diameter, drag coefficient, and motor (or a cluster of identical motors). Upper stages can be lit by the flight computer after a delay, or straight from the stage below, and can fall away at burnout or be separated by the flight computer.</li>
+  <li><b>Motors</b>: load the real thrust curve as a <code>.eng</code> or <code>.rse</code> file from <a href="https://www.thrustcurve.org">thrustcurve.org</a>. Loaded files are copied to <code>Documents\Aviary\Motors</code>. When you only know the name, <b>Quick motor</b> builds an approximate curve from a designation such as G80.</li>
+  <li><b>Recovery</b>: drogues, mains, single parachutes and streamers. Each opens at apogee (plus a delay), at an altitude on the way down, at a time after liftoff, or from the motor's ejection charge, and has a <b>pyro channel</b> number.</li>
+  <li><b>Launch site</b>, shared by every rocket: elevation, temperature, wind, rail length and location.</li>
+</ul>
+<p>The prediction beside the form updates as you type: apogee, top speed, rail exit speed, descent rates, landing speed and drift. It also warns about low thrust-to-weight, slow rail exit, parachutes opening too fast and hard landings. The simulator is a vertical (one-dimensional) model, so it's a good check rather than a replacement for OpenRocket.</p>
+
+<h2 id="mockingbird">Mockingbird</h2>
+<h3>How a test works</h3>
+<ol>
+  <li>Your flight computer runs its normal code, but reads its sensors from Mockingbird instead of the real chips (the <a href="#library">MockingbirdHIL library</a> makes this a few lines).</li>
+  <li>Mockingbird simulates the selected rocket's flight and streams barometer, accelerometer, gyro and GPS readings over USB, 50 times a second by default. Each test starts with some time on the pad so the board can zero its barometer.</li>
+  <li>When your code fires a pyro channel, Mockingbird does what that channel is wired to in the simulation: it opens the parachute, lights the next stage or separates a stage. A drogue fired too early really does open at speed in the simulation.</li>
+  <li>When the flight is over, every deployment and ignition is graded against the rocket profile. The flight, what the board reported, and the console are saved to <code>Documents\Aviary\Mockingbird Runs</code>.</li>
+</ol>
+<h3>The first test</h3>
+<ol>
+  <li>On the <b>Rocket</b> tab, pick or build the rocket. Make sure each pyro-fired parachute has the channel number your firmware uses.</li>
+  <li>On the <b>Flight computer</b> tab, tick the fields your firmware reads, choose which accelerometer axis points to the nose, check the pyro channel table, and set the baud rate to match <code>Serial.begin()</code>.</li>
+  <li>Take out igniters and e-matches and unplug the pyro battery.</li>
+  <li>Press <b>Connect</b>, choose <b>Your flight computer</b>, pick the port, and connect. Close the Arduino IDE's Serial Monitor first, because only one program can use a port. The status turns green with <i>Ready: (your board's name)</i> when the library answers.</li>
+  <li>Pick a test on the left and press <b>Start test</b>, or tick several and press <b>Run ticked tests</b>.</li>
+</ol>
+<p>The <b>virtual flight computer</b> is built in, so you can try everything without hardware. It's deliberately simple, so it usually fails two of the standard tests (the pressure dip and the knock on the pad). That's those tests doing their job.</p>
+<h3>The standard tests</h3>
+<table>
+  <tr><th>Test</th><th>What it checks</th></tr>
+  <tr><td>Normal flight</td><td>No faults: everything should work.</td></tr>
+  <tr><td>Noisy barometer</td><td>Ten times the usual barometer noise for the whole flight.</td></tr>
+  <tr><td>Pressure dip before apogee</td><td>A 6 hPa drop for half a second, 2.5 s before apogee (like a Mach dip). Naive apogee detection fires early.</td></tr>
+  <tr><td>Ejection charge pressure spike</td><td>Bay pressure jumps 3 kPa for 0.3 s after apogee. The main must not come out early.</td></tr>
+  <tr><td>Barometer freezes at apogee</td><td>The barometer repeats one value for 3 s.</td></tr>
+  <tr><td>Data stops near apogee</td><td>No samples for 1 s, like a loose cable or a busy processor.</td></tr>
+  <tr><td>Knock on the pad</td><td>A 4 g bump 5 s before launch. Deciding it has launched while on the pad is a failure.</td></tr>
+  <tr><td>Long wait on the pad</td><td>Two minutes on the pad while the pressure drifts.</td></tr>
+  <tr><td>Weak motor</td><td>15% less thrust.</td></tr>
+  <tr><td>Accelerometer maxes out at 8 g</td><td>Readings above 8 g are clipped.</td></tr>
+  <tr><td>Motor quits early (CATO)</td><td>The motor stops 0.4 s into its burn. Recovery still has to work from a low apogee.</td></tr>
+  <tr><td>Upper stage doesn't light</td><td>Staged rockets only: the igniter fires but the motor never lights.</td></tr>
+</table>
+<p>Use <b>Edit</b> to change a test or <b>New test</b> to build your own from any mix of faults: pressure jumps and drift, noisy or frozen sensors, dropouts, data gaps, bumps, accelerometer range, thrust scale, early motor cutoff and failed ignition. Each fault starts a set time before or after liftoff, burnout or apogee.</p>
+<h3>Reading the result</h3>
+<ul>
+  <li><b>Checks</b>: each deployment and ignition the rocket profile expects, with what happened. An apogee deployment must fire within 1 s early to 2 s late, an altitude deployment within 10% of its altitude, and so on. Change the limits on the Flight computer tab.</li>
+  <li><b>What the flight computer reported</b>: how quickly it detected launch, burnout, apogee and landing, if your firmware sends those events.</li>
+  <li><b>The charts</b>: solid lines are the simulation's truth and dashed lines are what your board reported (send <code>alt</code> and <code>vel</code> with <code>hil.telemetry()</code>). The bottom chart shows exactly what was sent to the board, with fault windows shaded.</li>
+  <li><b>Animation</b>: switch the Flight panel from <i>Charts</i> to <i>Animation</i> to watch the simulated rocket fly, live while the test runs or replayed for a finished or past run, with burns, apogee, deployments and fault events shown as they happen. Choose <b>3D</b> to see the flight over the launch site's real terrain (see <a href="#terrain">Terrain</a>). <b>Save video</b> saves the replay as a .webm video.</li>
+  <li><b>Pyro timing</b>: for each output, how long after it should have fired the board decided to (and on which sample), how long the board took from reading that sample to firing, and the serial delay back to the PC. The board's own timing needs the MockingbirdHIL library from this version.</li>
+  <li><b>Board received</b>: how many samples arrived intact. If some were damaged, call <code>hil.poll()</code> more often or lower the sample rate.</li>
+</ul>
+<h3>Replay a real flight</h3>
+<p><b>Replay a log…</b> plays a real flight into the flight computer: any log Heron reads, from the Heron library, an Owl recording or a file. The board gets the barometer and accelerometer readings exactly as they were recorded, pad shakes included, from up to 20 seconds before liftoff to landing. Heron's analysis gives the real liftoff, burnout and apogee, and the rocket profile's deployment rules say when each output should have fired, so the result is graded like any test. Try it with your own flights, especially the ones that went wrong.</p>
+<h3>Monte Carlo</h3>
+<p><b>Monte Carlo…</b> runs many flights with random wind (any direction, up to a speed you choose), motor thrust, mass, drag, sensor noise and pad wait, optionally on top of the selected test's faults. With the virtual flight computer, hundreds of flights run in the background in under a minute. With your board they run one after another as ordinary tests. The result shows each output's pass rate and the spread of its timing (the middle 90% of flights, typical and worst), with a histogram, the conditions of any flight that failed and a button to watch it. <b>Save results</b> writes a CSV of every flight to Mockingbird Runs.</p>
+<ul>
+</ul>
+<p>Click any past run on the left to see it again. Heron lists them too.</p>
+<h3>Faster than real time</h3>
+<p>Tests run in real time by default. If your firmware times everything with <code>hil.millis()</code> (the simulated clock) instead of <code>millis()</code>, set the speed to 2× or 4×. The virtual flight computer can also run at 20× or instantly.</p>
+<h3>Firmware that doesn't use the library</h3>
+<p>On the Flight computer tab, choose <b>My own line format</b> and write a template such as <code>{t_ms},{p_pa},{az_g}</code> to match a replay format your firmware already reads. Under <b>Messages from your firmware</b>, tell Mockingbird which printed messages mean "I fired the drogue" and so on.</p>
+
+<h2 id="library">The Arduino library (MockingbirdHIL)</h2>
+<p>It's in the <code>Arduino</code> folder of this download. Copy the <code>MockingbirdHIL</code> folder into <code>Documents\Arduino\libraries</code> and restart the Arduino IDE. It works on AVR (Uno, Nano), RP2040 and RP2350, STM32, ESP32, Teensy and other Arduino cores, uses no heap and about 330 bytes of RAM.</p>
+<p>Start with <b>File › Examples › MockingbirdHIL › MockingbirdTry</b>, a complete small dual-deploy flight computer that only flies inside Mockingbird. It never touches any pins, so you can flash it to a bare board and see a test pass. <b>AddToYourFlightComputer</b> shows the pattern for your own firmware:</p>
+<pre><code>#include &lt;MockingbirdHIL.h&gt;
+MockingbirdHIL hil(Serial);
+
+void setup() {
+  Serial.begin(115200);                 // same baud rate as in Mockingbird
+  hil.begin("Fledgling");               // Mockingbird shows "Ready: Fledgling"
+}
+
+void loop() {
+  bool sample = hil.poll();             // call every loop
+  if (hil.testStarted()) resetFlightState();
+  if (hil.active() &amp;&amp; !sample) return;  // in a test, run once per sample
+
+  float p = hil.active() ? hil.pressure() : readMyBarometer();   // Pa
+  float a = hil.active() ? hil.accelG(2)  : readMyAccelZ();      // g, 2 = Z
+  uint32_t t = hil.millis();            // simulated time during a test
+
+  // ... your flight logic ...
+  // if (hil.active()) hil.pyro(1); else firePyro(1);
+  // hil.event(F("APOGEE"));  hil.state(F("COAST"));  hil.telemetry("alt", alt, "vel", vel);
+}</code></pre>
+<p>Reports are only sent while a test is running, so a real flight's serial output stays clean. The library's own <code>README.md</code> lists every function.</p>
+<h3>Tips</h3>
+<ul>
+  <li>An Uno or Nano holds only 64 received bytes, about 5 ms at 115200 baud. Long SD card writes can make it miss samples; the result shows how many arrived damaged.</li>
+  <li>Arduino boards restart when the port opens. Leave <b>Restart the board (DTR)</b> on, so every test starts from a fresh boot.</li>
+  <li>The protocol is plain text, described in the library's README, if you'd rather implement it yourself on another platform.</li>
+</ul>
+
+<h2 id="heron">Heron</h2>
+<p>Drop a log onto Heron, or press <b>Open log…</b>. It reads CSV, tab, semicolon or space separated text from any flight computer, OpenRocket exports (with field descriptions), Owl recordings and Mockingbird runs. Column names such as <i>Time (ms)</i>, <i>Altitude (ft)</i>, <i>Pressure</i>, <i>Accel Z</i> or <i>alt_m</i> are recognised along with their units. Anything it can't work out is labelled under <b>Columns…</b>, and Heron remembers your choice for that file.</p>
+<ul>
+  <li><b>Overview</b>: liftoff, burnout, apogee, deployments and landing, found from the data; apogee, top speed, peak acceleration, descent rates and landing speed; and altitude, speed and acceleration charts with the flight phases shaded. When a log has both a barometer and an accelerometer, Heron combines them into a best estimate. A bump on the pad doesn't count as liftoff: a jump in acceleration only counts when the push lasts and the altitude keeps climbing after it.</li>
+  <li><b>Animation</b>: replays the flight in 2D, or in <b>3D</b> when the log has GPS: the real path over the terrain, with its ground track, drop line, a velocity arrow and the landing point. Drag to turn the view, right-drag to move it, scroll to zoom; <i>Whole flight</i> and <i>Follow rocket</i> switch the camera, and <i>Contours</i> / <i>Map</i> choose how the ground looks. The 2D view replays the flight as a rocket climbing through the sky, with the motor flame and smoke while it burns, the parachutes opening when they did, an altitude scale that zooms with the rocket, and the altitude, speed and phase alongside. <i>Auto</i> speed plays the burn, apogee and deployments in real time and speeds up in between; click or drag on the profile to jump. <b>Save video</b> plays the whole flight and saves it as a .webm video.</li>
+  <li><b>Model vs flight</b>: simulate a rocket profile or load a predicted flight (for example an OpenRocket export) and see the difference. Heron can also measure the rocket's drag coefficient from the coast phase and save it to the profile, so future predictions match.</li>
+  <li><b>Compare flights</b>: tick flights in the library to draw them on the same time scale, with the key numbers side by side.</li>
+  <li><b>Sensor health</b> (on <i>Data and notes</i>, and counted in the key numbers): problems with the flight computer's data rather than the flight. Logging gaps, the barometer and accelerometer disagreeing, an accelerometer that maxed out, a barometer that froze, wild readings, pad noise, GPS dropouts, battery sag when a charge fired, and Mach effects, each with when it happened and what to do about it.</li>
+  <li><b>Export…</b> saves the analysed data as CSV or a text summary, and each chart has its own PNG button. <b>Print report</b> makes a one-page flight report with the key numbers, the charts drawn at print size, the events and the sensor health; choose <i>Save as PDF</i> in the print window for a file.</li>
+</ul>
+
+<h2 id="owl">Owl</h2>
+<h3>Connecting</h3>
+<p>Press <b>Connect</b> and choose:</p>
+<ul>
+  <li><b>Serial port</b>: a USB radio receiver (LoRa, XBee, RFD900 and the like) or a flight computer on its cable.</li>
+  <li><b>Wi-Fi (UDP)</b>: boards such as an ESP32 that send packets over a network. Windows may ask to let Owl through the firewall the first time.</li>
+  <li><b>Demo flight</b>: a simulated flight of any rocket profile, to try Owl out.</li>
+  <li><b>Replay</b>: play back a recording.</li>
+</ul>
+<h3>Telemetry formats</h3>
+<p>Owl reads one line of text per packet, in whichever of these your board sends:</p>
+<pre><code>time_ms,alt_m,vel,lat,lon,sats,batt,state        &lt;- a header line, sent now and then
+12840,152.3,48.1,40.850012,-119.120044,9,8.12,COAST
+
+alt=152.3 vel=48.1 lat=40.850012 lon=-119.120044 sats=9
+
+{"alt":152.3,"vel":48.1,"gps":{"lat":40.850012,"lon":-119.120044}}
+
+$GPGGA,123519,4051.0007,N,11907.2026,W,1,09,0.9,1545.4,M,,,,*30   &lt;- straight from a GPS tracker</code></pre>
+<p>Owl guesses what each field means and its unit from the name (<i>alt_ft</i>, <i>Altitude (m)</i>, <i>vbat</i>…). Check or correct the guesses on the <b>Fields</b> tab. If your lines have no header, list the field names in Settings. A prefix such as <code>$TLM</code> filters out other lines.</p>
+<h3>During a flight</h3>
+<ul>
+  <li>The big readout, phase bar and charts follow the flight. Launch, burnout, apogee (with the altitude), main deployment, landing and signal loss are spoken aloud (turn the voice off in Settings).</li>
+  <li><b>Checklist</b> (top bar) is a pre-flight checklist built from a rocket profile: each motor and igniter, each recovery device with its deployment rule and pyro channel, the electronics and the pad. Items telemetry can prove (battery, link, GPS position, armed, recording) tick themselves. Add your own items per rocket. The ticked list is saved with the recording.</li>
+  <li><b>Recovery mode</b> (in the Recovery panel) fills the screen with a big arrow and the distance to the rocket from this laptop's live location, updating as you walk. Once you're moving, the arrow turns to point relative to the way you're walking.</li>
+  <li><b>Recovery</b> shows the rocket's last GPS position, its distance and direction from the pad (or from this laptop), a compass arrow, a Google Maps link, and a QR code to scan with your phone's camera to navigate to it.</li>
+  <li>The map saves every tile you look at, and <b>Save area for offline</b> downloads the map and ground heights 3 km around the map's centre. Do that at home for your launch field and the map and 3D terrain work at the field without internet. Owl also saves the ground heights around the pad by itself when it first gets a GPS position. Distance and direction always work, map or not.</li>
+  <li>Everything is recorded to <code>Documents\Aviary\Owl Recordings</code> while connected: the raw lines, a tidy CSV that Heron opens, and a summary.</li>
+</ul>
+
+<h2 id="terrain">Terrain and the 3D view</h2>
+<p>The 3D views in Heron and Mockingbird draw the ground from free elevation data (Terrarium tiles, from AWS open data), shaded with thin contour lines, or with the map laid over it. All three apps share one cache in <code>%LocalAppData%\Aviary</code>, so anything Owl has saved works in the others without internet. Heron places the flight using the log's GPS; Mockingbird uses the launch site's latitude and longitude in the rocket profile (or the log's GPS for a replay). Without saved elevation the ground is drawn flat, and the view says so.</p>
+
+<h2 id="safety">Safety</h2>
+<div class="safety">
+  <p style="margin-top:0"><b>Before every Mockingbird test, take out igniters and e-matches and unplug the pyro battery.</b> Mockingbird makes the flight computer believe it is flying, so it will try to fire every charge. The library never drives pins itself, but your firmware might.</p>
+  <p style="margin-bottom:0">Passing every test doesn't make a flight computer safe. It is one check alongside ground tests of your charges, a careful look at the wiring, and the NAR or Tripoli safety code at the launch.</p>
+</div>
+
+<h2 id="trouble">Troubleshooting</h2>
+<table>
+  <tr><th>Problem</th><th>Try</th></tr>
+  <tr><td>The window doesn't open, or a message says to open an address</td><td>The apps need Microsoft Edge or Google Chrome. Open the address shown in Edge. The app logs are in <code>%LocalAppData%\Aviary\logs</code>.</td></tr>
+  <tr><td>"That port is already open in another program"</td><td>Close the Arduino IDE's Serial Monitor, other terminal programs, or the other Aviary app using it.</td></tr>
+  <tr><td>No serial port in the list</td><td>Plug the board in before pressing Choose port. Clone boards with a CH340 chip may need the CH340 driver.</td></tr>
+  <tr><td>Mockingbird says "no Mockingbird reply"</td><td>Check the baud rate matches <code>Serial.begin()</code> and that the firmware calls <code>hil.begin()</code> and <code>hil.poll()</code>. Firmware without the library can still be tested; press Start anyway.</td></tr>
+  <tr><td>The board missed samples</td><td>Call <code>hil.poll()</code> more often, lower the sample rate, untick unused fields, or raise the baud rate.</td></tr>
+  <tr><td>Owl's map is blank at the field</td><td>No internet there. Look over the field in Owl at home first, so the tiles are saved.</td></tr>
+  <tr><td>Avast or Windows Defender blocks or removes an app</td><td>Unsigned programs are sometimes flagged by mistake. In Avast, restore it from <i>Menu › Quarantine</i> and add the Aviary folder under <i>Menu › Settings › General › Exceptions</i>. In Windows Security, restore it from <i>Protection history</i>.</td></tr>
+  <tr><td>A pinned taskbar icon says it can't reach the page</td><td>That pinned the window, not the app. Unpin it and pin the .exe instead.</td></tr>
+</table>
+
+<h2 id="source">Source code</h2>
+<p>The <code>Source</code> folder has everything: a small Go program per app (<code>cmd/</code>, <code>host/</code>) that serves the interface (<code>web/</code>) on this computer and opens it in Edge, the Arduino library, and the tests. To rebuild, install Go 1.24 or newer and run <code>build-windows.sh</code> (on Linux or macOS, or in Git Bash), or on Windows <code>go build -ldflags "-H windowsgui" -o Owl.exe ./cmd/owl</code>. The tests run with Node.js: <code>node --test tests/*.test.js</code>.</p>
+<p class="muted">Aviary 1.1.0. Map data © OpenStreetMap contributors.</p>
+</main>
+</body>
+</html>
