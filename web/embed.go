@@ -3,5 +3,5 @@ package web
 
 import "embed"
 
-//go:embed shared owl heron mockingbird
+//go:embed shared owl heron mockingbird companion
 var FS embed.FS

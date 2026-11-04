@@ -4,7 +4,7 @@
 # icons, menu entries and an installer. Run from the project folder.
 set -euo pipefail
 cd "$(dirname "$0")"
-VER=${VER:-1.1.0}
+VER=${VER:-1.2.1}
 declare -A NAME=([owl]=Owl [heron]=Heron [mockingbird]=Mockingbird)
 declare -A DESC=([owl]="Ground station for any rocket's telemetry" [heron]="Flight data analyzer for any rocket's logs" [mockingbird]="Flight computer tester (firmware in the loop)")
 mkdir -p build/linux

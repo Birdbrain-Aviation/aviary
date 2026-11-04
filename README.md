@@ -32,7 +32,7 @@ Windows will probably warn you about the apps, and some antivirus programs may b
 
 If you'd rather not trust a prebuilt download:
 
-- Compare the file's SHA-256 checksum with the one listed on the release page. In PowerShell: `Get-FileHash .\Aviary-1.1.0-windows.zip`
+- Compare the file's SHA-256 checksum with the one listed on the release page. In PowerShell: `Get-FileHash .\Aviary-1.2.1-windows.zip`
 - Upload the file to [VirusTotal](https://www.virustotal.com) to see what dozens of scanners say. One or two generic flags on an unsigned Go program is normal.
 - Build it yourself from this source (see [Building from source](#building-from-source)). It's the same code.
 
@@ -54,6 +54,8 @@ To test your own board, add the [MockingbirdHIL](arduino/MockingbirdHIL) library
 
 Owl figures out which fields your telemetry has (altitude, GPS, battery, signal strength and so on) from the incoming lines, records every flight, and keeps a recovery panel with distance and bearing from the pad or from your laptop, plus a QR code that opens the landing spot on your phone. Map tiles you look at are saved so the map still works at a field with no signal.
 
+Owl can also put its readouts on your phone. Press **Phone** in Owl and the laptop serves a small companion app over Wi-Fi (or your phone's hotspot) that you add to your home screen; there's nothing to install from an app store. It shows the flight live, and its recovery screen points at the rocket from where you're standing using the phone's own GPS and compass. It keeps working from the rocket's last position after you walk out of Wi-Fi range. iPhones only allow GPS and compass on secure pages, so Owl makes its own certificate that you trust on the phone once; the setup page walks you through it.
+
 ## Heron
 
 Heron gives you apogee, top speed, burnout, descent rates and landing speed at a glance, flags sensor problems, and lets you compare several flights side by side. It reads Owl recordings and Mockingbird runs directly, and can turn a real log into a Mockingbird replay so you can re-fly it against new code.
@@ -62,12 +64,14 @@ Heron gives you apogee, top speed, burnout, descent rates and landing speed at a
 
 - `cmd/owl`, `cmd/heron`, `cmd/mockingbird`: one small Go program per app. Each serves its interface on `127.0.0.1` (ports 47710, 47720 and 47730, fixed so Edge remembers serial-port permissions) and opens it in an Edge app window. It also stores settings and files, relays UDP telemetry for Owl, and caches map tiles. The app quits when its window closes.
 - `host/`: that shared Go code. `host_windows.go` finds the Documents folder (OneDrive-aware) and Edge or Chrome.
+  - `host/companion.go`: Owl's phone companion server: HTTPS with a local certificate authority it makes once, a pairing key, and read-only live data. `firewall_windows.go` adds the Windows Firewall rule for it.
 - `web/`: the interfaces (plain HTML, CSS and JavaScript modules, no build step), embedded into each program.
   - `web/shared/js/sim.js`: the 1-D flight simulator (stages, clusters, recovery, ISA atmosphere, wind drift, sensor models).
   - `web/shared/js/hil.js`: Mockingbird's engine: the wire protocol, fault injection, closed-loop pyro handling, grading, and the virtual flight computer.
   - `web/shared/js/analysis.js`, `flightlog.js`: Heron's log reader and flight analysis.
   - `web/shared/js/health.js`, `replay.js`: Heron's sensor health checks, and turning a log into a Mockingbird replay.
   - `web/shared/js/telemetry.js`, `fields.js`, `map.js`, `qr.js`: Owl's line parser, field recognition, tile map and QR codes.
+  - `web/companion/`: the phone app Owl serves (live readouts, and a recovery arrow from the phone's GPS and compass), and `web/owl/companion.js`, Owl's side of it.
   - `web/shared/js/flight3d.js`, `flightviz.js`: the 2D and 3D flight animation (WebGL terrain from cached elevation tiles, no libraries).
   - `web/shared/js/serial.js`: Web Serial (Edge and Chrome).
 - `arduino/MockingbirdHIL`: the Arduino library for flight computers.
