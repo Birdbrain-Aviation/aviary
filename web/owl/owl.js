@@ -12,6 +12,7 @@ import { FlightSim, rng } from "/shared/js/sim.js";
 import { loadRockets } from "/shared/js/rockets.js";
 import { altitudeFromPressure } from "/shared/js/atmosphere.js";
 import { openChecklist, checklistRecord, checklistProgress, openRecoveryMode } from "./fieldtools.js";
+import { openCompanion, companionTick } from "./companion.js";
 
 const DEFAULTS = {
   theme: "day", units: "imperial", voice: true, record: true, flightName: "",
@@ -53,6 +54,7 @@ async function main() {
   buildUI();
   loadRockets(host).then((st) => { ui.store = st; renderChecklistBtn(); }).catch(() => {});
   setInterval(tick, 200);
+  setInterval(() => companionTick(phoneCtx()), 250);
   window.addEventListener("beforeunload", () => { flushRecording(true); });
 }
 
@@ -65,8 +67,9 @@ function buildUI() {
   ui.connectBtn = h("button", { class: "btn primary", onclick: () => (S.source ? disconnect() : openConnect()) }, "Connect");
   ui.nameInput = h("input", { type: "text", value: set.flightName, placeholder: "Flight name", "aria-label": "Flight name", style: { width: "190px", height: "30px" }, onchange: () => { set.flightName = ui.nameInput.value; set.save(); } });
   ui.checkBtn = h("button", { class: "btn small", title: "Pre-flight checklist for the rocket you're flying", onclick: showChecklist }, "Checklist");
+  ui.phoneBtn = h("button", { class: "btn small", title: "Show Owl's readouts and a recovery arrow on your phone", onclick: () => openCompanion(phoneCtx()) }, "Phone");
   const tools = [
-    ui.pill, ui.rate, ui.checkBtn, ui.recBtn,
+    ui.pill, ui.rate, ui.checkBtn, ui.phoneBtn, ui.recBtn,
     h("button", { class: "btn small", title: "Clear the screen and start a new recording, keeping the connection", onclick: newFlight }, "New flight"),
     h("button", { class: "btn small", onclick: openSettings }, "Settings"),
     ui.connectBtn,
@@ -736,6 +739,27 @@ async function writeSummary() {
     checklist: ui.store ? checklistRecord(checkCtx()) : null,
   };
   try { await host.write("owl", `${r.dir}/summary.json`, JSON.stringify(sum, null, 2)); } catch { /* */ }
+}
+
+// ------------------------------------------------------------------ phone companion
+// What the phone shows: plain numbers in SI, the phone formats them.
+function phoneCtx() {
+  return {
+    host, set, btn: ui.phoneBtn,
+    snapshot: () => {
+      const tk = S.tracker, L = S.latest, now = performance.now();
+      const num = (x) => (Number.isFinite(x) ? x : null);
+      return {
+        v: 1, name: set.flightName || "", source: S.source?.label || "", connected: !!S.source, units: set.units,
+        lastPacketAgo: S.lastRecv ? (now - S.lastRecv) / 1000 : null, signalLost: !!S.signalLost,
+        phase: tk.phase, alt: tk.agl, vs: num(tk.vel), max: tk.maxAlt, tplus: ui.tplus?.textContent || "",
+        state: L.state?.v ?? null, batt: num(L.batt?.v), rssi: num(L.rssi?.v), sats: num(L.sats?.v),
+        fix: S.gps.last ? { lat: S.gps.last.lat, lon: S.gps.last.lon, alt: num(S.gps.last.alt), ago: (now - S.gps.last.at) / 1000 } : null,
+        pad: S.gps.pad || null,
+        events: S.events.slice(0, 12).map((e) => ({ what: e.what, kind: e.kind, detail: e.detail, t: num(e.t), clock: e.clock?.toISOString?.() || null })),
+      };
+    },
+  };
 }
 
 // ------------------------------------------------------------------ field tools

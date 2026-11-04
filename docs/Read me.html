@@ -218,6 +218,16 @@ $GPGGA,123519,4051.0007,N,11907.2026,W,1,09,0.9,1545.4,M,,,,*30   &lt;- straight
   <li>Everything is recorded to <code>Documents\Aviary\Owl Recordings</code> while connected: the raw lines, a tidy CSV that Heron opens, and a summary.</li>
 </ul>
 
+<h2 id="phone">Owl on your phone</h2>
+<p>Owl can show its readouts on an iPhone (or Android phone) over Wi-Fi, with a recovery arrow driven by the phone's own GPS and compass. There's nothing to download from an app store: Owl on the laptop serves the companion, and you add it to your home screen.</p>
+<ol>
+  <li>Put the phone and laptop on the same network. At the field, turn on the iPhone's <b>Personal Hotspot</b> and join it from the laptop.</li>
+  <li>In Owl press <b>Phone</b> and tick <b>Share with phones on this network</b>. If Windows asks about the firewall, allow Owl on private and public networks (hotspots count as public).</li>
+  <li>The first time, scan QR code 1 with the iPhone camera and follow the page: download Owl's certificate, install it in Settings (Profile Downloaded), then turn it on under Settings › General › About › Certificate Trust Settings. iPhones only allow GPS and compass on secure pages; the certificate is what makes Owl's page secure. Owl made it on your laptop and it's used for nothing else.</li>
+  <li>Scan QR code 2, then in Safari tap Share › <b>Add to Home Screen</b>. From then on, tap the Owl icon.</li>
+</ol>
+<p><b>Live</b> shows the phase, altitude, speed, highest point, flight time, signal, battery, GPS and events (it can speak them). <b>Recovery</b> points to the rocket from where you're standing: tap <i>Use the compass</i> and the arrow turns with the phone; <i>Walk there in Maps</i> opens Apple Maps. The rocket's last position stays on the phone, so recovery keeps working when you walk out of Wi-Fi range. The home screen app is tied to the laptop's address on that network, so set it up on the network you'll use at the field. Phones can only read the readouts; they can't change anything on the laptop, and <i>New pairing code</i> disconnects every phone.</p>
+
 <h2 id="terrain">Terrain and the 3D view</h2>
 <p>The 3D views in Heron and Mockingbird draw the ground from free elevation data (Terrarium tiles, from AWS open data), shaded with thin contour lines, or with the map laid over it. All three apps share one cache in <code>%LocalAppData%\Aviary</code>, so anything Owl has saved works in the others without internet. Heron places the flight using the log's GPS; Mockingbird uses the launch site's latitude and longitude in the rocket profile (or the log's GPS for a replay). Without saved elevation the ground is drawn flat, and the view says so.</p>
 
@@ -242,7 +252,7 @@ $GPGGA,123519,4051.0007,N,11907.2026,W,1,09,0.9,1545.4,M,,,,*30   &lt;- straight
 
 <h2 id="source">Source code</h2>
 <p>The <code>Source</code> folder has everything: a small Go program per app (<code>cmd/</code>, <code>host/</code>) that serves the interface (<code>web/</code>) on this computer and opens it in Edge, the Arduino library, and the tests. To rebuild, install Go 1.24 or newer and run <code>build-windows.sh</code> (on Linux or macOS, or in Git Bash), or on Windows <code>go build -ldflags "-H windowsgui" -o Owl.exe ./cmd/owl</code>. The tests run with Node.js: <code>node --test tests/*.test.js</code>.</p>
-<p class="muted">Aviary 1.1.0. Map data © OpenStreetMap contributors.</p>
+<p class="muted">Aviary 1.2.1. Map data © OpenStreetMap contributors.</p>
 </main>
 </body>
 </html>
