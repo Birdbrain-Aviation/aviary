@@ -163,8 +163,8 @@ label.check input { width: 16px; height: 16px; accent-color: var(--orange); }
 .grid-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 12px; }
 .grid-form.two { grid-template-columns: 1fr 1fr; }
 
-.seg { display: inline-flex; border: 1px solid var(--rule-strong); border-radius: var(--r); overflow: hidden; }
-.seg button { border: 0; background: var(--panel); padding: 0 10px; height: 30px; cursor: pointer; font-size: 13.5px; border-right: 1px solid var(--rule); }
+.seg { display: inline-flex; flex: none; border: 1px solid var(--rule-strong); border-radius: var(--r); overflow: hidden; }
+.seg button { border: 0; background: var(--panel); padding: 0 10px; height: 30px; cursor: pointer; font-size: 13.5px; border-right: 1px solid var(--rule); white-space: nowrap; }
 .seg button:last-child { border-right: 0; }
 .seg button.on { background: var(--ink); color: var(--panel); }
 

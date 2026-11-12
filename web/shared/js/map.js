@@ -43,7 +43,7 @@ export class TileMap {
     this.canvas = h("canvas", { style: { position: "absolute", inset: "0", width: "100%", height: "100%" } });
     this.zoomIn = h("button", { class: "btn icon small", "aria-label": "Zoom in", onclick: () => this.setZoom(this.zoom + 1) }, "+");
     this.zoomOut = h("button", { class: "btn icon small", "aria-label": "Zoom out", onclick: () => this.setZoom(this.zoom - 1) }, "−");
-    this.status = h("div", { style: { position: "absolute", left: "8px", bottom: "8px", fontSize: "12px", color: "var(--graphite)", background: "var(--panel)", padding: "2px 6px", borderRadius: "3px", opacity: "0.92" } });
+    this.status = h("div", { style: { position: "absolute", left: "8px", right: "8px", bottom: "22px", width: "fit-content", fontSize: "12px", color: "var(--graphite)", background: "var(--panel)", padding: "2px 6px", borderRadius: "3px", opacity: "0.92" } });
     const attr = h("div", { style: { position: "absolute", right: "4px", bottom: "2px", fontSize: "11px", color: "var(--graphite)", background: "var(--panel)", padding: "0 4px", opacity: "0.85" } }, "© OpenStreetMap contributors");
     const ctrls = h("div", { style: { position: "absolute", right: "8px", top: "8px", display: "flex", flexDirection: "column", gap: "4px", zIndex: 2 } }, this.zoomIn, this.zoomOut);
     el.append(this.tileLayer, this.canvas, ctrls, this.status, attr);
@@ -136,7 +136,10 @@ export class TileMap {
       c.stroke(); c.setLineDash([]);
     }
     c.font = `600 13px ${cssVar("--font")}`;
-    for (const m of this.markers) {
+    // markers first, then labels placed where they don't cover a marker or
+    // another label (the rocket sits on the pad until launch)
+    const taken = [];
+    const placed = this.markers.map((m) => {
       const [x, y] = px(m.lat, m.lon);
       const col = m.color?.startsWith("--") ? cssVar(m.color) : m.color || cssVar("--orange");
       c.fillStyle = col; c.strokeStyle = cssVar("--panel"); c.lineWidth = 2.5;
@@ -145,11 +148,20 @@ export class TileMap {
       else if (m.kind === "station") { c.rect(x - 6, y - 6, 12, 12); }
       else c.arc(x, y, 6, 0, Math.PI * 2);
       c.stroke(); c.fill();
-      if (m.label) {
-        const w = c.measureText(m.label).width;
-        c.fillStyle = cssVar("--panel"); c.globalAlpha = 0.9; c.fillRect(x + 11, y - 9, w + 8, 18); c.globalAlpha = 1;
-        c.fillStyle = cssVar("--ink"); c.textBaseline = "middle"; c.fillText(m.label, x + 15, y);
-      }
+      taken.push([x - 9, y - 12, 18, 22]);
+      return [m, x, y];
+    });
+    const hits = (b) => taken.some((t) => b[0] < t[0] + t[2] && t[0] < b[0] + b[2] && b[1] < t[1] + t[3] && t[1] < b[1] + b[3]);
+    c.textBaseline = "middle";
+    // later markers (the rocket) get first pick
+    for (const [m, x, y] of placed.reverse()) {
+      if (!m.label) continue;
+      const w = c.measureText(m.label).width + 8;
+      const spots = [[x + 11, y - 9], [x - 11 - w, y - 9], [x - w / 2, y - 32], [x - w / 2, y + 14]];
+      const [bx, by] = spots.find(([sx, sy]) => !hits([sx, sy, w, 18])) || spots[0];
+      taken.push([bx, by, w, 18]);
+      c.fillStyle = cssVar("--panel"); c.globalAlpha = 0.9; c.fillRect(bx, by, w, 18); c.globalAlpha = 1;
+      c.fillStyle = cssVar("--ink"); c.fillText(m.label, bx + 4, by + 9);
     }
   }
 

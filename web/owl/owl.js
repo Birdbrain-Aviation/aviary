@@ -109,7 +109,7 @@ function buildUI() {
 
   // recovery
   ui.recBody = h("div", { class: "rec-body" });
-  ui.refSeg = seg([["pad", "From the pad"], ["station", "From this laptop"]], set.station.ref, (v) => { set.station.ref = v; set.save(); if (v === "station" && set.station.lat == null) useMyLocation(); renderRecovery(); });
+  ui.refSeg = seg([["pad", "From pad"], ["station", "From laptop"]], set.station.ref, (v) => { set.station.ref = v; set.save(); if (v === "station" && set.station.lat == null) useMyLocation(); renderRecovery(); });
   const recovery = h("section", { class: "panel recovery", "aria-label": "Recovery" },
     h("div", { class: "panel-head" }, h("span", { class: "panel-title" }, "Recovery"), h("div", { class: "spacer" }),
       h("button", { class: "btn small", title: "Full-screen arrow and distance to the rocket, from this laptop's live location", onclick: () => openRecoveryMode({ D, last: () => S.gps.last, pad: () => S.gps.pad }) }, "Recovery mode"), ui.refSeg),

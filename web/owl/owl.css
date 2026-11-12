@@ -15,6 +15,7 @@
 .readout { grid-column: 1; grid-row: 2; }
 .charts { grid-column: 2 / 4; grid-row: 2; }
 .recovery { grid-column: 1; grid-row: 3; }
+.recovery > .panel-head { flex-wrap: wrap; row-gap: 6px; }
 .mapbox { grid-column: 2; grid-row: 3; }
 .side { grid-column: 3; grid-row: 3; }
 
