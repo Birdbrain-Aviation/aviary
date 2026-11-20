@@ -10,6 +10,8 @@
 //              $MBC,PING*CS                        FC answers $MBE,PONG
 //   FC -> PC   $MBE,<EVENT>[,<value>]              e.g. $MBE,PYRO,1  $MBE,APOGEE  $MBE,STATE,COAST
 //              $MBT,<name>,<value>[,<name>,<value>...]   values to plot (e.g. alt, vel)
+//              $MBA,<name>,<value>[,<name>,<value>...]   control outputs that move the
+//                                                         simulated rocket (brake: 0 to 1)
 //              $MBL,<text>                         log text
 // CS is the NMEA-style XOR of the characters between '$' and '*', in hex.
 
@@ -57,6 +59,11 @@ export const FAULT_TYPES = {
   cato: { label: "Motor quits early", desc: "A stage's motor stops pushing partway through its burn, like a CATO.", params: [{ key: "stage", label: "Stage", kind: "stage", value: 0 }, { key: "after", label: "After", unit: "s", value: 0.4 }], whole: true },
   no_light: { label: "Motor fails to light", desc: "An upper stage's igniter fires but its motor doesn't light.", params: [{ key: "stage", label: "Stage", kind: "stage", value: 1 }], whole: true },
   pyro_dud: { label: "Charge doesn't go off", desc: "The first pyro channel the board fires for this device does nothing, like an open e-match or a bad charge. Firing that channel again does nothing either. A backup on another channel should save the flight.", params: [{ key: "device", label: "Device", kind: "device", value: "apogee" }], whole: true },
+  wind: { label: "Wind", desc: "A steady wind for the whole flight, in place of the launch site's. Off the rail the rocket turns into it and flies tilted.", params: [{ key: "speed", label: "Speed", unit: "m/s", value: 9 }, { key: "from", label: "From", unit: "°", value: 270 }], whole: true },
+  gust: { label: "Gust", desc: "Extra wind for a while, on top of the steady wind.", params: [{ key: "speed", label: "Speed", unit: "m/s", value: 6 }, { key: "from", label: "From", unit: "°", value: 270 }] },
+  rail_tilt: { label: "Rail angle", desc: "The launch rail leans away from vertical, so the rocket starts tilted.", params: [{ key: "angle", label: "Angle", unit: "°", value: 25 }, { key: "toward", label: "Leaning toward", unit: "°", value: 90 }], whole: true },
+  spin: { label: "Spin", desc: "The rocket rolls steadily from liftoff to apogee, like canted fins. The gyro along the rocket sees it, and the other axes turn with it.", params: [{ key: "rate", label: "Roll rate", unit: "°/s", value: 360 }], whole: true },
+  brake_stuck: { label: "Airbrakes jam", desc: "The airbrakes stop where they are, whatever the board commands. Apogee isn't graded against the target in a test with this fault.", params: [] },
   reboot: { label: "Flight computer restarts", desc: "Mockingbird tells the board to restart, like a brownout or a watchdog reset. The rocket keeps flying while it boots, and it has to work out where it is. Needs MockingbirdHIL 1.2 or newer.", params: [], instant: true },
 };
 export const SENSORS = [["baro", "Barometer"], ["accel", "Accelerometer"], ["gyro", "Gyro"], ["gps", "GPS"]];
@@ -72,7 +79,7 @@ export function describeFault(fl, stageName = (k) => `stage ${k + 1}`, deviceNam
   if (!T) return fl.type;
   const P = fl.params || {};
   const vals = T.params.map((p) => p.kind === "sensor" ? (SENSORS.find((s) => s[0] === P[p.key])?.[1] || P[p.key]).toLowerCase() : p.kind === "stage" ? stageName(Number(P[p.key]))
-    : p.kind === "device" ? (P[p.key] === "apogee" || !P[p.key] ? "apogee device" : deviceName(P[p.key])) : `${P[p.key]}${p.unit === "×" ? "×" : " " + p.unit}`);
+    : p.kind === "device" ? (P[p.key] === "apogee" || !P[p.key] ? "apogee device" : deviceName(P[p.key])) : `${P[p.key]}${p.unit === "×" || p.unit === "°" ? p.unit : " " + p.unit}`);
   let when = "";
   if (!(T.whole || fl.ref === "whole")) {
     const o = Number(fl.offset) || 0;
@@ -98,6 +105,9 @@ export function defaultTests(rocket) {
     { id: "cato", name: "Motor quits early (CATO)", note: "The first motor stops 0.4 s into its burn. Recovery still has to work from a low apogee.", faults: [{ type: "cato", ref: "whole", offset: 0, duration: 0, params: { stage: 0, after: 0.4 } }] },
     { id: "no-light", name: "Upper stage doesn't light", needsStages: 2, note: "The flight computer fires the igniter but the motor never lights. Recovery still has to work.", faults: [{ type: "no_light", ref: "whole", offset: 0, duration: 0, params: { stage: 1 } }] },
     { id: "drogue-dud", name: "Drogue charge doesn't go off", needsDevice: "apogee", note: "The first charge fired for the apogee device does nothing. It passes only if a backup charge on another pyro channel deploys it.", faults: [{ type: "pyro_dud", ref: "whole", offset: 0, duration: 0, params: { device: "apogee" } }] },
+    { id: "crosswind", name: "Gusty crosswind", note: "A 9 m/s wind and a gust as it leaves the rail: the rocket turns into the wind and flies tilted, so the accelerometer no longer points straight up. Deployments still have to be right.", faults: [{ type: "wind", ref: "whole", offset: 0, duration: 0, params: { speed: 9, from: 270 } }, { type: "gust", ref: "liftoff", offset: 0, duration: 2, params: { speed: 6, from: 270 } }] },
+    { id: "tilted-launch", name: "Tilted launch", needsStages: 2, note: "The rail leans 25°, so the rocket is past the tilt limit when the upper stage is due. The board must not light it (and must still recover the rocket).", faults: [{ type: "rail_tilt", ref: "whole", offset: 0, duration: 0, params: { angle: 25, toward: 90 } }] },
+    { id: "strong-motor", name: "Strong motor", needsAirbrakes: true, note: "8% more thrust. The airbrakes have to shed the extra height to hit the target apogee.", faults: [{ type: "thrust", ref: "whole", offset: 0, duration: 0, params: { factor: 1.08 } }] },
     { id: "reboot-coast", name: "Restart while coasting", note: "The board restarts 1 s after burnout. It has to remember it's flying and still catch apogee. Needs MockingbirdHIL 1.2 or newer.", faults: [{ type: "reboot", ref: "burnout", offset: 1, duration: 0, params: {} }] },
   ];
   return T;
@@ -111,6 +121,7 @@ export const OLD_DEFAULT_IDS = ["nominal", "noisy-baro", "pressure-dip", "ejecti
 export function testNeeds(t, rocket) {
   if (t.needsStages && (rocket?.stages?.length || 1) < t.needsStages) return `needs ${t.needsStages}+ stages`;
   if (t.needsDevice === "apogee" && !(rocket?.recovery || []).some((d) => d.deploy === "apogee")) return "needs an apogee deployment";
+  if (t.needsAirbrakes && !rocket?.airbrakes?.enabled) return "needs airbrakes";
   return "";
 }
 export const testApplies = (t, rocket) => !testNeeds(t, rocket);
@@ -152,11 +163,19 @@ export function defaultPyro(rocket) {
 }
 
 export const DEFAULT_TOL = { apogeeEarly: 1.0, apogeeLate: 2.0, altitudeFrac: 0.1, altitudeMin: 15, timer: 0.5, igniteEarly: 0.3, igniteLate: 0.7, safeLanding: 7.6,
-  backupLate: 3.0, backupAltFrac: 0.5, gradeEstimates: true, estAlt: 10, estAltFrac: 0.05, estVel: 6, estVelFrac: 0.08, restartBack: 5 };
+  backupLate: 3.0, backupAltFrac: 0.5, gradeEstimates: true, estAlt: 10, estAltFrac: 0.05, estVel: 6, estVelFrac: 0.08, restartBack: 5,
+  tiltMargin: 3, targetFrac: 0.02, targetMin: 3 };
+
+// The tilt limit for lighting an upper stage, in degrees from vertical.
+export const DEFAULT_TILT_LIMIT = 20;
+const RAD = Math.PI / 180;
+// Wind from a compass direction, as east/north components of where it blows.
+const windVec = (speed, from) => { const to = ((Number(from) || 0) + 180) * RAD; return [(Number(speed) || 0) * Math.sin(to), (Number(speed) || 0) * Math.cos(to)]; };
 
 // Names the board's own altitude and speed can go by in hil.telemetry().
 export const FC_ALT = /^(alt|altitude|agl|h|height|baro_?alt|est_?alt)$/i;
 export const FC_VEL = /^(vel|velocity|v|vz|speed|vspeed|est_?vel)$/i;
+export const FC_TILT = /^(tilt|tilt_deg|angle|off_vertical)$/i;
 
 // Faults that are a short event: estimates aren't scored while they act.
 const EVENT_FAULTS = new Set(["baro_spike", "accel_spike", "stuck", "dropout", "gap"]);
@@ -197,6 +216,7 @@ export class ReplaySim extends FlightSim {
     this.v = before ? 0 : this._interp(R.v, tau);
     this.f = before ? G0 : (R.f ? this._interp(R.f, tau) : G0);
     this.a = this.f - G0;
+    this.fv = [0, 0, this.f];   // logs give the axial reading; replay it straight up
     if (R.east) { this.x = before ? 0 : this._interp(R.east, tau); this.y = before ? 0 : this._interp(R.north, tau); }
     if (this.launched && this.liftoff === null && tau >= 0) { this.liftoff = this.t; this._ev("liftoff", { label: "Liftoff (from the log)" }); }
     this.thrust = tau >= 0 && tau < R.tBurn ? 1 : 0;
@@ -214,6 +234,12 @@ export class ReplaySim extends FlightSim {
 export class HILRun {
   constructor({ rocket, site, cfg, faults = [], send, onEvent, onSample, seed = 1 }) {
     this.rocket = rocket;
+    // faults that change the launch itself: wind, and the rail's angle
+    site = { ...(site || {}) };
+    for (const fl of faults.filter((x) => x.enabled !== false)) {
+      if (fl.type === "wind") { site.windSpeed = Number(fl.params?.speed) || 0; site.windDir = Number(fl.params?.from) || 0; }
+      if (fl.type === "rail_tilt") { site.railAngle = Number(fl.params?.angle) || 0; site.railDir = Number(fl.params?.toward) || 0; }
+    }
     this.site = site;
     this.cfg = {
       rate: 50, fields: DEFAULT_FIELDS, protocol: "mb", template: "{t_ms},{p_pa},{az_g}", templateCS: false,
@@ -256,7 +282,9 @@ export class HILRun {
     this.actions = [];      // {t, kind, label, applied, source, ch}
     this.fcEvents = [];     // detections the FC reported (APOGEE etc.)
     this.fcTlm = {};        // name -> {t:[], v:[]}
-    this.truth = { t: [], h: [], v: [], phase: [], x: [], y: [] };   // x east, y north (metres from the pad)
+    this.fcAct = {};        // control outputs the board sent: name -> {t:[], v:[]}
+    this.actNotes = new Set();
+    this.truth = { t: [], h: [], v: [], phase: [], x: [], y: [], tilt: [], brake: [] };   // x east, y north (metres from the pad), tilt in degrees
     this.sensed = { baro: [], acc: [] }; // what the FC was sent, one entry per truth row
     this.sent = 0; this.bytes = 0; this.lastHeader = -1e9; this.sampleIdx = 0;
     this.started = false; this.done = false; this.endReason = "";
@@ -307,15 +335,28 @@ export class HILRun {
     const dt = 1 / this.cfg.rate;
     while (!this.done && (this.sampleIdx + 1) * dt <= target + 1e-9) {
       if (!this.sim.launched && this.sim.t >= this.launchAt - 1e-9) { this.sim.launch(); this.onEvent({ type: "launch", t: this.sim.t }); }
+      this._simFaults(this.sim.t);
       const evs = this.sim.step(dt);
       this.sampleIdx++;
       for (const e of evs) this.onEvent({ ...e, sim: true });
       this._restartTick();
       this.truth.t.push(this.sim.t); this.truth.h.push(this.sim.h); this.truth.v.push(this.sim.v); this.truth.phase.push(this.sim.phase);
       this.truth.x.push(this.sim.x); this.truth.y.push(this.sim.y);
+      this.truth.tilt.push((this.sim.tilt || 0) / RAD); this.truth.brake.push(this.sim.brake || 0);
       this._sample();
       this._checkEnd();
     }
+  }
+
+  // Faults that act on the simulated rocket rather than its sensors.
+  _simFaults(t) {
+    let gust = [0, 0], held = false;
+    for (const fl of this.faults) {
+      if (fl.type === "gust" && this._faultActive(fl, t)) { const w = windVec(fl.params?.speed, fl.params?.from); gust = [gust[0] + w[0], gust[1] + w[1]]; }
+      if (fl.type === "brake_stuck" && this._faultActive(fl, t)) held = true;
+    }
+    this.sim.gust = gust;
+    this.sim.brakeHeld = held;
   }
 
   _sample() {
@@ -327,6 +368,7 @@ export class HILRun {
       if (fl.type === "baro_noise") noise.baroNoise *= Number(fl.params.factor) || 1;
       if (fl.type === "accel_noise") noise.accelNoise *= Number(fl.params.factor) || 1;
       if (fl.type === "accel_clip") noise.accelRange = (Number(fl.params.limit) || 16) * G0;
+      if (fl.type === "spin") noise.rollRate = Number(fl.params.rate) || 0;
     }
     const m = this.sim.measure(noise, this.R);
     const clip = (v) => Math.max(-noise.accelRange, Math.min(noise.accelRange, v));
@@ -421,6 +463,21 @@ export class HILRun {
     if (!s) return;
     if (!/^\$MBE,(READY|PONG)\b/i.test(s)) this.heard = true;
     let m;
+    if ((m = s.match(/^\$MBA,(.*)$/))) {
+      // control outputs: they move the simulated rocket
+      const parts = m[1].split("*")[0].split(",");
+      let last = null;
+      for (let i = 0; i + 1 < parts.length; i += 2) {
+        const k = parts[i].trim(), v = Number(parts[i + 1]);
+        if (!k || !Number.isFinite(v)) continue;
+        (this.fcAct[k] ||= { t: [], v: [] });
+        this.fcAct[k].t.push(t); this.fcAct[k].v.push(v);
+        if (v < -0.01 || v > 1.01) this.actNotes.add(`${k} went to ${v}; send 0 (closed) to 1 (fully open), not servo degrees`);
+        if (!this.sim.actuate(k, v)) this.actNotes.add(this.rocket.airbrakes?.enabled ? `"${k}" doesn't move anything; the airbrakes answer to "${this.rocket.airbrakes.name || "brake"}"` : `"${k}" doesn't move anything: this rocket has no airbrakes`);
+        last = { name: k, value: v };
+      }
+      return { kind: "actuator", ...(last || {}) };
+    }
     if ((m = s.match(/^\$MBT,(.*)$/))) {
       const parts = m[1].split("*")[0].split(",");
       for (let i = 0; i + 1 < parts.length; i += 2) {
@@ -510,6 +567,7 @@ export class HILRun {
     const ap = s.apogee;
     const bo = s.burnout;
     const hAt = (tt) => { const i = this.truth.t.findIndex((x) => x >= tt); return i < 0 ? null : { h: this.truth.h[i], v: this.truth.v[i] }; };
+    const tiltAt = (tt) => { const T = this.truth; if (!T.t.length) return 0; let i = T.t.findIndex((x) => x >= tt); if (i < 0) i = T.t.length - 1; return T.tilt[i] ?? 0; };
     const checks = [];
     const Tlab = (x) => `T${x - L >= 0 ? "+" : "−"}${Math.abs(x - L).toFixed(2)} s`;
     const signed = (x, f) => { const s = f(Math.abs(x)); return /^0(\D|$)/.test(s) ? s : (x >= 0 ? "+" : "−") + s; };
@@ -570,7 +628,23 @@ export class HILRun {
         c.expected = `${e.delay} s after ${this.rocket.stages[e.stage - 1].name.toLowerCase()} burnout`;
         const prevBo = bo[e.stage - 1];
         if (prevBo !== null) c.target = prevBo + e.delay;
-        if (!a) c.actual = "never fired";
+        // tilt lockout: past the limit when it's due, the stage must not be lit
+        const limit = Number(this.rocket.stages[e.stage]?.maxTilt) > 0 ? Number(this.rocket.stages[e.stage].maxTilt) : DEFAULT_TILT_LIMIT;
+        const tiltDue = prevBo !== null && !this.replay ? tiltAt(prevBo + e.delay) : null;
+        const sName = (this.rocket.stages[e.stage]?.name || "upper stage").toLowerCase();
+        if (tiltDue !== null && tiltDue > limit + tol.tiltMargin) {
+          c.expected = `held off (${tiltDue.toFixed(0)}° from vertical, limit ${limit}°)`;
+          if (!a) { c.ok = true; c.actual = "held off"; }
+          else { c.actual = `lit at ${tiltAt(a.t).toFixed(0)}°`; c.detail = `It lit the ${sName} while the rocket was ${tiltAt(a.t).toFixed(0)}° from vertical; the limit is ${limit}°. Check the tilt (from the gyros) before lighting an upper stage.`; }
+        } else if (!a) {
+          c.actual = "never fired";
+          // restarted around the time it was due: not lighting is the safe choice
+          const due = prevBo !== null ? prevBo + e.delay : null;
+          const rebootNear = due !== null && this.reboots.some((r) => r.t <= due + tol.igniteLate && (r.back == null || r.back >= prevBo));
+          if (rebootNear) { c.ok = true; c.actual = "held off"; c.detail = "It restarted around the time this stage was due and didn't light it, which is the safe choice."; }
+          else if (tiltDue !== null && tiltDue > limit - tol.tiltMargin) { c.ok = true; c.actual = "held off"; c.detail = `The rocket was ${tiltDue.toFixed(0)}° from vertical, right at the ${limit}° limit, so holding off is fine.`; }
+          else if (tiltDue !== null && tiltDue > 3) c.detail = `The rocket was only ${tiltDue.toFixed(0)}° from vertical (limit ${limit}°).`;
+        }
         else if (prevBo === null) { c.actual = "fired"; c.detail = "The stage below never burned out in the test."; }
         else {
           const err = a.t - (prevBo + e.delay);
@@ -580,6 +654,8 @@ export class HILRun {
           else if (ap && a.t >= ap.t) c.detail = "Fired after apogee: an upper stage must never light on the way down.";
           else if (!c.ok) c.detail = `Outside the window (−${tol.igniteEarly} s to +${tol.igniteLate} s).`;
           if (a.v < 15 && c.ok) c.detail = `Lit at only ${fmtVel(a.v)}; check the delay.`;
+          const tl = tiltAt(a.t);
+          if (tl > 5 && !this.replay) c.detail = [c.detail, `Lit at ${tl.toFixed(0)}° from vertical (limit ${limit}°).`].filter(Boolean).join(" ");
         }
       } else if (e.type === "separate") {
         c.expected = "after burnout, before apogee";
@@ -639,6 +715,11 @@ export class HILRun {
       checks.push(c);
     }
 
+    // airbrakes: shut while a motor burns, and apogee on the target
+    const AB = this.rocket.airbrakes;
+    const airbrake = AB?.enabled && !this.replay ? this._airbrakes(s, ap, L, tol, fmtAlt, Tlab, signed) : null;
+    if (airbrake) checks.push(...airbrake.checks);
+
     // the board's own altitude and speed against the truth
     const est = this._scoreEstimates(L, ap, s);
     if (est && tol.gradeEstimates !== false) {
@@ -683,6 +764,9 @@ export class HILRun {
     if (est?.alt) det.push({ label: "Its altitude", value: `typically ${fmtAlt(est.alt.rms)} off${Number.isFinite(est.alt.peakErr) ? `; peak read as ${fmtAlt(est.alt.peak)} (${signed(est.alt.peakErr, fmtAlt)})` : ""}` });
     if (est?.vel) det.push({ label: "Its speed", value: `typically ${fmtVel(est.vel.rms)} off, worst ${fmtVel(est.vel.max)}` });
     if (!est && this.cfg.protocol === "mb" && !this.replay) det.push({ label: "Its altitude and speed", value: "not sent, so not scored. Send them with hil.telemetry(\"alt\", …, \"vel\", …) in metres and m/s." });
+    if (!this.replay && s.maxTilt > 2 * RAD) det.push({ label: "Tilt", value: `up to ${(s.maxTilt / RAD).toFixed(0)}° from vertical under power${ap && tiltAt(ap.t) > 30 ? `, ${tiltAt(ap.t).toFixed(0)}° at apogee` : ""}` });
+    if (airbrake) det.push(...airbrake.det);
+    for (const n of this.actNotes) det.push({ label: "Control output", value: n });
     for (const r of this.reboots) if (!r.unsupported && r.back != null) det.push({ label: r.unsolicited ? "Restarted by itself" : "Restart", value: `${Tlab(r.t)}${r.unsolicited ? "" : `, back after ${(r.back - r.t).toFixed(1)} s`}${r.resumedAs ? `, carried on in ${r.resumedAs}` : r.forgot && r.forgot !== "unknown" ? `, came back in ${r.forgot}` : ""}` });
 
     // outcome: if the run ended early under a parachute, finish the descent offline to report landing speed
@@ -695,7 +779,8 @@ export class HILRun {
       if (g.landed) { landing = Math.abs(g.events.find((e) => e.type === "landing")?.impact ?? 0); projected = true; }
     }
     // a replay lands however the real flight landed, whatever the board did
-    const outcome = { apogee: s.maxH, apogeeTime: ap ? ap.t - L : null, maxVelocity: s.maxV, landingSpeed: landing, landingProjected: projected, hardLanding: !this.replay && landing !== null && landing > tol.safeLanding, replay: this.replay ? this.replay.name || "log" : null };
+    const outcome = { apogee: s.maxH, apogeeTime: ap ? ap.t - L : null, maxVelocity: s.maxV, landingSpeed: landing, landingProjected: projected, hardLanding: !this.replay && landing !== null && landing > tol.safeLanding, replay: this.replay ? this.replay.name || "log" : null,
+      target: Number(this.rocket.targetApogee) > 0 && !this.replay ? Number(this.rocket.targetApogee) : null, maxTilt: s.maxTilt / RAD };
 
     // pyro timing: when each output should have fired, which sample the board
     // acted on, how long it took to fire after reading it, and the link delay
@@ -713,6 +798,47 @@ export class HILRun {
       samples: this.sent, faults: this.faults, liftoff: L, boardStats: this.fcStats || null, pyroTiming,
       estimates: est, reboots: this.reboots.map((r) => ({ ...r, t: r.t - L, back: r.back == null ? null : r.back - L, ack: r.ack == null ? null : r.ack - L })),
     };
+  }
+
+  // Airbrake checks: closed under power, and apogee on the target (when the
+  // rocket has one), judged fairly when the target was out of reach.
+  _airbrakes(s, ap, L, tol, fmtAlt, Tlab, signed) {
+    const T = this.truth, checks = [], det = [];
+    const burns = [];
+    s.ign.forEach((ig, k) => { if (ig !== null) burns.push([ig, s.burnout[k] ?? Infinity]); });
+    const lastBo = Math.max(...s.burnout.filter((x) => x !== null), -Infinity);
+    let early = null, maxCoast = 0, sumCoast = 0, nCoast = 0, firstOpen = null, maxAll = 0;
+    for (let i = 0; i < T.t.length; i++) {
+      const x = T.t[i], b = T.brake[i] || 0;
+      if (b > maxAll) maxAll = b;
+      if (b > 0.05 && firstOpen === null) firstOpen = x;
+      if (b > 0.05 && early === null && burns.some(([a0, a1]) => x >= a0 && x <= a1)) early = { t: x, b };
+      if (Number.isFinite(lastBo) && x > lastBo && (!ap || x <= ap.t)) { maxCoast = Math.max(maxCoast, b); sumCoast += b; nCoast++; }
+    }
+    const avgCoast = nCoast ? sumCoast / nCoast : 0;
+    const pct = (x) => `${Math.round(x * 100)}%`;
+    checks.push(early
+      ? { label: "Airbrakes under power", ok: false, expected: "closed while a motor burns", actual: `${pct(early.b)} open at ${Tlab(early.t)}`, detail: "Opening the brakes during boost wastes the motor and loads them hard. Wait for burnout." }
+      : { label: "Airbrakes under power", ok: true, expected: "closed while a motor burns", actual: "closed", detail: "" });
+    const sent = Object.keys(this.fcAct).length > 0;
+    const target = Number(this.rocket.targetApogee) || 0;
+    const jammed = this.faults.some((f) => f.type === "brake_stuck");
+    if (target > 0 && ap) {
+      const allowed = Math.max(tol.targetMin, tol.targetFrac * target);
+      const err = ap.h - target;
+      const c = { label: "Apogee target", expected: `${fmtAlt(target)} ± ${fmtAlt(allowed)}`, actual: `${fmtAlt(ap.h)} (${signed(err, fmtAlt)})`, ok: Math.abs(err) <= allowed, detail: "", errAlt: err };
+      if (jammed) { c.ok = true; c.actual += ", not graded"; c.detail = "The airbrakes were jammed in this test."; }
+      else if (err < -allowed) {
+        if (maxCoast <= 0.05) { c.ok = true; c.detail = "Short of the target even with the brakes shut: the motor or the rocket can't reach it."; }
+        else c.detail = `${fmtAlt(-err)} short with the brakes open up to ${pct(maxCoast)}: they opened too far or too early.`;
+      } else if (err > allowed) {
+        if (avgCoast >= 0.9) { c.ok = true; c.detail = "Over the target even with the brakes fully open all through the coast."; }
+        else c.detail = `${fmtAlt(err)} over with the brakes open ${pct(avgCoast)} on average during the coast.${sent ? "" : " The board never sent a brake command ($MBA,brake,…)."}`;
+      }
+      checks.push(c);
+    }
+    det.push({ label: "Airbrakes", value: maxAll > 0.01 ? `open up to ${pct(maxAll)}, first at ${Tlab(firstOpen)}; ${pct(avgCoast)} on average in the coast` : sent ? "commanded but never opened" : "never commanded" });
+    return { checks, det };
   }
 
   // Compare the board's altitude and speed (from hil.telemetry) with the
@@ -770,15 +896,17 @@ export class HILRun {
   // flight data for saving (Heron can open it)
   csv() {
     const L = this.sim.liftoff ?? this.launchAt;
-    const names = Object.keys(this.fcTlm);
-    const head = ["time_s", "alt_m", "vel_mps", "phase", "sensed_baro_alt_m", "sensed_accel_g", "east_m", "north_m", ...names.map((n) => `fc_${n}`)];
+    const names = Object.keys(this.fcTlm), acts = Object.keys(this.fcAct);
+    const head = ["time_s", "alt_m", "vel_mps", "phase", "sensed_baro_alt_m", "sensed_accel_g", "east_m", "north_m", "tilt_deg", "airbrake", ...names.map((n) => `fc_${n}`), ...acts.map((n) => `act_${n}`)];
     const rows = [head.join(",")];
-    const idx = Object.fromEntries(names.map((n) => [n, 0]));
+    const idx = Object.fromEntries([...names.map((n) => ["t:" + n, 0]), ...acts.map((n) => ["a:" + n, 0])]);
     const fx = (v, d) => (Number.isFinite(v) ? v.toFixed(d) : "");
+    const latest = (key, s, t) => { while (idx[key] + 1 < s.t.length && s.t[idx[key] + 1] <= t) idx[key]++; return s.t.length && s.t[idx[key]] <= t ? s.v[idx[key]] : ""; };
     for (let i = 0; i < this.truth.t.length; i++) {
       const t = this.truth.t[i];
-      const fc = names.map((n) => { const s = this.fcTlm[n]; while (idx[n] + 1 < s.t.length && s.t[idx[n] + 1] <= t) idx[n]++; return s.t[idx[n]] <= t ? s.v[idx[n]] : ""; });
-      rows.push([(t - L).toFixed(3), this.truth.h[i].toFixed(2), this.truth.v[i].toFixed(2), this.truth.phase[i], fx(this.sensed.baro[i], 2), fx(this.sensed.acc[i], 3), fx(this.truth.x[i], 2), fx(this.truth.y[i], 2), ...fc].join(","));
+      const fc = names.map((n) => latest("t:" + n, this.fcTlm[n], t));
+      const ac = acts.map((n) => latest("a:" + n, this.fcAct[n], t));
+      rows.push([(t - L).toFixed(3), this.truth.h[i].toFixed(2), this.truth.v[i].toFixed(2), this.truth.phase[i], fx(this.sensed.baro[i], 2), fx(this.sensed.acc[i], 3), fx(this.truth.x[i], 2), fx(this.truth.y[i], 2), fx(this.truth.tilt[i], 2), fx(this.truth.brake[i], 3), ...fc, ...ac].join(","));
     }
     return rows.join("\n") + "\n";
   }
@@ -787,9 +915,11 @@ export class HILRun {
 // ---------------------------------------------------------------- virtual FC
 // A reference dual-deploy / staging flight computer that speaks the protocol,
 // built from the rocket profile. It mirrors the example Arduino sketch, and
-// also shows two things the sketch leaves out: backup charges (any extra pyro
-// channel set for a device fires a little later) and surviving a restart (it
-// keeps its flight phase in "EEPROM" that a restart doesn't clear).
+// also shows what the sketch leaves out: backup charges (any extra pyro
+// channel set for a device fires a little later), surviving a restart (it
+// keeps its flight phase in "EEPROM" that a restart doesn't clear), a tilt
+// estimate from the gyros that holds an upper stage past its tilt limit, and
+// an airbrake controller that aims for the target apogee.
 export class VirtualFC {
   constructor({ rocket, pyro, upAxis = "z", upSign = 1, send }) {
     this.send = send;
@@ -804,8 +934,20 @@ export class VirtualFC {
     this.plan = {
       drogueCh: dCh[0] ?? null, drogueBackup: dCh.slice(1), drogueDelay: drogue?.delay || 0,
       mainCh: mCh[0] ?? null, mainBackup: mCh.slice(1), mainAlt: main?.altitude ?? 150,
-      stages: rocket.stages.map((s, k) => (k > 0 && s.ignition !== "direct" ? { ch: ch((a) => a.type === "ignite" && a.stage === k), delay: s.ignitionDelay || 0 } : null)).filter(Boolean),
+      stages: rocket.stages.map((s, k) => (k > 0 && s.ignition !== "direct" ? { ch: ch((a) => a.type === "ignite" && a.stage === k), delay: s.ignitionDelay || 0, maxTilt: Number(s.maxTilt) > 0 ? Number(s.maxTilt) : DEFAULT_TILT_LIMIT, name: s.name } : null)).filter(Boolean),
     };
+    // what the airbrake controller knows about the rocket after burnout
+    const ab = rocket.airbrakes;
+    if (ab?.enabled && Number(rocket.targetApogee) > 0) {
+      const top = rocket.stages[rocket.stages.length - 1];
+      const D = Math.max(...rocket.stages.map((s) => s.diameter || 0.05));
+      const motorEmpty = (s) => ((s.motor?.totalMass || 0) - (s.motor?.propMass || 0)) * (s.motorCount || 1);
+      this.plan.brake = {
+        name: ab.name || "brake", target: Number(rocket.targetApogee),
+        mass: top.dryMass + motorEmpty(top), cdA: (top.cd || 0.5) * Math.PI * (D / 2) ** 2, cdAb: (ab.cd ?? 1.2) * (ab.area ?? 0.003),
+      };
+    }
+    this.upIdx = { x: 0, y: 1, z: 2 }[upAxis] ?? 2;
     this.map = []; this.active = false;
     this.nvm = null;        // survives a restart, like EEPROM
     this.booting = null;
@@ -814,10 +956,11 @@ export class VirtualFC {
     this.send("$MBE,READY,Virtual flight computer");
   }
   // what a restart must not forget
-  _save() { this.nvm = { phase: this.phase, p0: this.p0, launchT: this.launchT, burnT: this.burnT, apT: this.apT, stageIdx: this.stageIdx, maxAlt: this.maxAlt, fired: { ...this.fired } }; }
+  _save() { this.nvm = { phase: this.phase, p0: this.p0, tPad: this.tPad, launchT: this.launchT, burnT: this.burnT, apT: this.apT, stageIdx: this.stageIdx, maxAlt: this.maxAlt, fired: { ...this.fired } }; }
   reset() {
     Object.assign(this, { phase: "PAD", candT: null, candAlt: 0, pushT: 0, pushLast: 0, p0: null, padN: 0, alt: 0, vel: 0, est: 0, maxAlt: 0, lastT: null, launchT: null, burnT: null, apT: null,
-      fired: {}, below: 0, stageIdx: 0, landT: null, n: 0, accUp: 9.81, boostN: 0 });
+      fired: {}, below: 0, stageIdx: 0, landT: null, n: 0, accUp: 9.81, boostN: 0,
+      R: null, accPad: [0, 0, 9.81], tilt: 0, held: {}, brake: 0, brakeSentT: -1, rho: 1.2, vCtl: null, hCtl: null, tPad: null });
   }
   receive(line) {
     const m = line.match(/^\$(MB[CHD]),(.*?)(?:\*([0-9A-F]{2}))?$/i);
@@ -847,13 +990,82 @@ export class VirtualFC {
       this.step(s);
     }
   }
+  // Tilt from the gyros: on the pad, gravity gives the starting attitude;
+  // from launch, the body rates turn it (R maps board axes to the world).
+  _attitude(s, dt) {
+    const acc = ["x", "y", "z"].map((k) => (Number.isFinite(s[`a${k}_g`]) ? s[`a${k}_g`] * 9.80665 : s[`a${k}`]));
+    if (this.phase === "PAD") {
+      // learn which way is down only while it's sitting still (about 1 g);
+      // under thrust the accelerometer reads the motor, not gravity
+      const mag = acc.every(Number.isFinite) ? Math.hypot(...acc) : NaN;
+      if (mag > 0.85 * 9.81 && mag < 1.15 * 9.81) for (let i = 0; i < 3; i++) this.accPad[i] += (acc[i] - this.accPad[i]) * 0.05;
+      this.R = null;
+      const g = this.accPad, n = Math.hypot(...g) || 1;
+      this.tilt = (Math.acos(Math.max(-1, Math.min(1, (g[this.upIdx] * this.upSign) / n))) * 180) / Math.PI;
+      return;
+    }
+    if (!this.R) {
+      // world z (up) in board axes is where gravity pushed on the pad
+      const z = this.accPad.map((v) => v / (Math.hypot(...this.accPad) || 1));
+      let x = Math.abs(z[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+      const d = x[0] * z[0] + x[1] * z[1] + x[2] * z[2];
+      x = x.map((v, i) => v - d * z[i]); const nx = Math.hypot(...x); x = x.map((v) => v / nx);
+      const y = [z[1] * x[2] - z[2] * x[1], z[2] * x[0] - z[0] * x[2], z[0] * x[1] - z[1] * x[0]];
+      this.R = [x, y, z];   // rows: world axes in board coordinates
+    }
+    const w = ["gx", "gy", "gz"].map((k) => ((Number(s[k]) || 0) * Math.PI) / 180);
+    // R ← R (I + [w]× dt), then tidy it back to a rotation
+    const R = this.R.map((r) => [r[0] + (r[1] * w[2] - r[2] * w[1]) * dt, r[1] + (r[2] * w[0] - r[0] * w[2]) * dt, r[2] + (r[0] * w[1] - r[1] * w[0]) * dt]);
+    const nz = Math.hypot(...R[2]); R[2] = R[2].map((v) => v / nz);
+    const dx = R[0][0] * R[2][0] + R[0][1] * R[2][1] + R[0][2] * R[2][2];
+    R[0] = R[0].map((v, i) => v - dx * R[2][i]); const nx = Math.hypot(...R[0]); R[0] = R[0].map((v) => v / nx);
+    R[1] = [R[2][1] * R[0][2] - R[2][2] * R[0][1], R[2][2] * R[0][0] - R[2][0] * R[0][2], R[2][0] * R[0][1] - R[2][1] * R[0][0]];
+    this.R = R;
+    this.tilt = (Math.acos(Math.max(-1, Math.min(1, R[2][this.upIdx] * this.upSign))) * 180) / Math.PI;
+  }
+
+  // Height and vertical speed from the accelerometer, for the airbrakes. The
+  // barometer's speed lags while the rocket slows (it would brake too hard), so
+  // this integrates acceleration from liftoff, where the speed is known to be
+  // zero, and leans on the barometer only a little.
+  _inertial(t, dt) {
+    if (!this.plan.brake) return;
+    // on the pad: start integrating with the first push above 1 g, and forget
+    // it again if it was only a knock
+    if (this.phase === "PAD" && this.candT == null && this.accUp < 1.15 * 9.81) { this.vCtl = 0; this.hCtl = 0; return; }
+    if (this.apT != null || this.vCtl == null) return;
+    const c = Math.cos((this.tilt * Math.PI) / 180);
+    this.vCtl += (this.accUp * c - 9.80665) * dt;
+    this.hCtl += this.vCtl * dt;
+    this.vCtl += 0.002 * (this.vel - this.vCtl);
+    this.hCtl += 0.02 * (this.est - this.hCtl);
+  }
+
+  // Airbrakes: after the last burnout, pick how far to open them so the
+  // predicted apogee (vertical coast with drag) lands on the target.
+  _airbrake(t, dt) {
+    const B = this.plan.brake;
+    if (!B || this.stageIdx < this.plan.stages.length || t - this.burnT < 0.3) return;
+    // tilted, the drag is bigger than the vertical speed suggests: v_air = v / cos(tilt)
+    const g = 9.80665, c = Math.max(0.5, Math.cos((this.tilt * Math.PI) / 180));
+    const v = this.vCtl;
+    // nearly at apogee the brakes can't do much: hold them where they are
+    if (v == null || v < 8) return;
+    const apo = (e) => { const k = (this.rho * (B.cdA + e * B.cdAb)) / (2 * B.mass * c); return this.hCtl + Math.log(1 + (k * v * v) / g) / (2 * k); };
+    let e;
+    if (apo(0) <= B.target) e = 0;
+    else if (apo(1) >= B.target) e = 1;
+    else { let lo = 0, hi = 1; for (let i = 0; i < 14; i++) { const mid = (lo + hi) / 2; if (apo(mid) > B.target) lo = mid; else hi = mid; } e = (lo + hi) / 2; }
+    if (Math.abs(e - this.brake) > 0.02 || t - this.brakeSentT > 0.2) { this.brake = e; this.brakeSentT = t; this.send(`$MBA,${B.name},${e.toFixed(3)}`); }
+  }
+
   // power comes back: RAM is gone, the saved flight state isn't
   _boot() {
     this.booting = null; this.map = []; this.active = false;
     this.reset();
     const s = this.nvm;
     if (s && s.phase !== "PAD" && s.phase !== "LANDED") {
-      Object.assign(this, { phase: s.phase, p0: s.p0, launchT: s.launchT, burnT: s.burnT, apT: s.apT, stageIdx: s.stageIdx, maxAlt: s.maxAlt, fired: { ...s.fired }, seed: true });
+      Object.assign(this, { phase: s.phase, p0: s.p0, tPad: s.tPad, launchT: s.launchT, burnT: s.burnT, apT: s.apT, stageIdx: s.stageIdx, maxAlt: s.maxAlt, fired: { ...s.fired }, seed: true });
     }
     this.send("$MBE,READY,Virtual flight computer");
     if (this.seed) { this.send(`$MBL,Restarted mid-flight: carrying on in ${this.phase} from the saved state`); this.send(`$MBE,STATE,${this.phase}`); }
@@ -867,10 +1079,18 @@ export class VirtualFC {
     const a = "a" + this.upAxis; // ax / ay / az
     const accRaw = Number.isFinite(s[a + "_g"]) ? s[a + "_g"] * 9.80665 : s[a];
     if (Number.isFinite(accRaw)) this.accUp = accRaw * this.upSign;
+    this._attitude(s, dt);
+    this._inertial(t, dt);
+    if (Number.isFinite(s.p_pa) && Number.isFinite(s.temp_c)) this.rho = s.p_pa / (287.05 * (s.temp_c + 273.15));
     const p = s.p_pa;
     if (Number.isFinite(p)) {
-      if (this.phase === "PAD") { this.padN++; this.p0 = this.p0 === null ? p : this.p0 + (p - this.p0) / Math.min(this.padN, 100); }
-      const alt = 44330.77 * (1 - Math.pow(p / this.p0, 0.190263));
+      if (this.phase === "PAD") {
+        this.padN++; this.p0 = this.p0 === null ? p : this.p0 + (p - this.p0) / Math.min(this.padN, 100);
+        if (Number.isFinite(s.temp_c)) this.tPad = this.tPad == null ? s.temp_c : this.tPad + (s.temp_c - this.tPad) / Math.min(this.padN, 100);
+      }
+      // the standard atmosphere assumes 15 °C at the ground; scale by the pad's
+      // own temperature or a warm day reads low
+      const alt = 44330.77 * ((273.15 + (this.tPad ?? 15)) / 288.15) * (1 - Math.pow(p / this.p0, 0.190263));
       // after a restart, start the filter where the rocket is, not at zero
       if (this.seed) { this.seed = false; this.est = alt; this.vel = 0; }
       // alpha-beta filter
@@ -881,7 +1101,7 @@ export class VirtualFC {
       this.alt = alt;
     }
     if (this.est > this.maxAlt) this.maxAlt = this.est;
-    if (++this.n % 5 === 0) this.send(`$MBT,alt,${this.est.toFixed(2)},vel,${this.vel.toFixed(2)}`);
+    if (++this.n % 5 === 0) this.send(`$MBT,alt,${this.est.toFixed(2)},vel,${this.vel.toFixed(2)},tilt,${this.tilt.toFixed(1)}`);
 
     switch (this.phase) {
       case "PAD":
@@ -904,11 +1124,14 @@ export class VirtualFC {
       case "COAST": {
         const st = this.plan.stages[this.stageIdx];
         if (st && !this.fired[st.ch] && t - this.burnT >= st.delay) {
-          if (this.vel > 15) { this._fire(st.ch, "Lighting the next stage"); this.stageIdx++; this._state("BOOST"); this.boostN = 0; break; }
-          this.send("$MBL,Staging inhibited: too slow"); this.stageIdx++;
+          if (this.tilt > st.maxTilt) { this.send(`$MBL,Holding the ${st.name}: ${this.tilt.toFixed(0)}° from vertical (limit ${st.maxTilt}°)`); this.stageIdx++; }
+          else if (this.vel > 15) { this._fire(st.ch, "Lighting the next stage"); this.stageIdx++; this._state("BOOST"); this.boostN = 0; break; }
+          else { this.send("$MBL,Staging inhibited: too slow"); this.stageIdx++; }
         }
+        this._airbrake(t, dt);
         if (t - this.launchT > 2 && (this.vel < 0 ? ++this.below : (this.below = 0)) >= 3 || this.maxAlt - this.est > 3) {
           this.apT = t; this.send("$MBE,APOGEE"); this._state("DESCENT");
+          if (this.plan.brake && this.brake > 0) { this.brake = 0; this.send(`$MBA,${this.plan.brake.name},0`); }
         }
         break;
       }

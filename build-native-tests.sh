@@ -3,8 +3,8 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 mkdir -p build/native
-for ex in MockingbirdTry AddToYourFlightComputer; do
+for ex in MockingbirdTry AddToYourFlightComputer MockingbirdAirbrakes; do
   g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-unused-parameter -DMB_NATIVE_TEST -I tests/native -I arduino/MockingbirdHIL/src \
     -DSKETCH="\"$PWD/arduino/MockingbirdHIL/examples/$ex/$ex.ino\"" tests/native/main.cpp arduino/MockingbirdHIL/src/MockingbirdHIL.cpp -o "build/native/$ex"
 done
-echo "built build/native/MockingbirdTry and build/native/AddToYourFlightComputer"
+echo "built build/native/MockingbirdTry, AddToYourFlightComputer and MockingbirdAirbrakes"

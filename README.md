@@ -44,7 +44,7 @@ If you hit a false positive, you can report it to Microsoft at [microsoft.com/wd
 
 ![Mockingbird after a passing test](docs/screenshots/mockingbird.png)
 
-Mockingbird runs a flight computer through a set of test flights: a normal flight, a noisy barometer, a pressure spike from an ejection charge, data dropping out near apogee, a weak motor, a charge that doesn't go off, the board restarting mid-flight, and more. Each test grades every deployment and ignition, and scores the board's own altitude and speed estimates against the simulation's truth. You can write your own tests, run a Monte Carlo batch, replay a real flight log from Heron, and print a one-page report of a test or a whole set. There's a built-in virtual flight computer so you can try it without hardware.
+Mockingbird runs a flight computer through a set of test flights: a normal flight, a noisy barometer, a pressure spike from an ejection charge, data dropping out near apogee, a weak motor, a charge that doesn't go off, the board restarting mid-flight, a gusty crosswind, a tilted launch, and more. The simulated rocket can tilt: the rail can lean and the wind turns it, and the sensors read in the board's own axes. Each test grades every deployment and ignition (including holding an upper stage that's past its tilt limit), scores the board's own altitude and speed estimates against the simulation's truth, and for a rocket with airbrakes, grades apogee against a target as the board opens and closes them. You can write your own tests, run a Monte Carlo batch, replay a real flight log from Heron, and print a one-page report of a test or a whole set. There's a built-in virtual flight computer so you can try it without hardware.
 
 To test your own board, add the [MockingbirdHIL](arduino/MockingbirdHIL) library to your flight computer code. It feeds the board simulated barometer, accelerometer, gyro and GPS readings and reports pyro outputs and state changes back to Mockingbird. The library has two examples: a minimal one to try first and one showing how to drop it into existing flight code.
 
@@ -99,7 +99,7 @@ tests/restart.sh            # starts all three apps without windows for the brow
 python3 tests/ui_mockingbird.py && python3 tests/ui_mockingbird_serial.py && python3 tests/ui_owl.py && python3 tests/ui_heron.py
 ```
 
-The browser tests use Playwright for Python. `ui_mockingbird_serial.py` connects a stand-in serial port to the compiled `MockingbirdTry` example, so the interface, serial code, protocol and library all get exercised together. `ui_mockingbird_usb_restart.py` does the same for a restart test on a board whose USB port drops while it restarts, and `ui_mockingbird_restart_dud_report.py` covers the restart and dud-charge tests and the printed reports.
+The browser tests use Playwright for Python. `ui_mockingbird_serial.py` connects a stand-in serial port to the compiled `MockingbirdTry` example, so the interface, serial code, protocol and library all get exercised together. `ui_mockingbird_usb_restart.py` does the same for a restart test on a board whose USB port drops while it restarts, and `ui_mockingbird_restart_dud_report.py` covers the restart and dud-charge tests and the printed reports, and `ui_mockingbird_tilt_airbrakes.py` the airbrakes, the tilted launch and a Monte Carlo batch against a target.
 
 ## Safety
 

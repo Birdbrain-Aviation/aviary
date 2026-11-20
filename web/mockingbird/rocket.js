@@ -1,12 +1,12 @@
 // Rocket profile editor (stages, motors, recovery, launch site) with a live
 // prediction. Profiles are shared with Heron and Owl.
-import { h, clear, toast, modal, numField, textField, selectField, debounce, pickFile, readFileText, download, confirmBox, safeName } from "/shared/js/ui.js";
+import { h, clear, toast, modal, numField, textField, selectField, checkField, debounce, pickFile, readFileText, download, confirmBox, safeName } from "/shared/js/ui.js";
 import { host } from "/shared/js/host.js";
 import { display, fmt, G0 } from "/shared/js/units.js";
 import { TimeChart, ChartGroup } from "/shared/js/chart.js";
-import { simulate, PHASE_LABEL } from "/shared/js/sim.js";
+import { simulate, PHASE_LABEL, AERO_DEFAULTS, AIRBRAKE_DEFAULTS, stageLength } from "/shared/js/sim.js";
 import { quickMotor, motorToJSON, parseMotorFile, impulseClass } from "/shared/js/motors.js";
-import { uid, newStage, newDevice, saveRockets, liftoffMass } from "/shared/js/rockets.js";
+import { uid, newStage, newDevice, saveRockets, liftoffMass, exampleRockets } from "/shared/js/rockets.js";
 
 // Editing units: small rockets read better in ounces/inches or grams/millimetres.
 export function editUnits(system) {
@@ -18,6 +18,7 @@ export function editUnits(system) {
     alt: imp ? { u: "ft", to: (m) => m / 0.3048, from: (x) => x * 0.3048, d: 0 } : { u: "m", to: id, from: id, d: 1 },
     wind: imp ? { u: "mph", to: (v) => v / 0.44704, from: (x) => x * 0.44704, d: 1 } : { u: "m/s", to: id, from: id, d: 1 },
     temp: imp ? { u: "°F", to: (c) => c * 1.8 + 32, from: (f) => (f - 32) / 1.8, d: 0 } : { u: "°C", to: id, from: id, d: 1 },
+    area: imp ? { u: "in²", to: (m2) => m2 / 0.00064516, from: (x) => x * 0.00064516, d: 2 } : { u: "cm²", to: (m2) => m2 * 1e4, from: (x) => x / 1e4, d: 1 },
   };
 }
 const round = (x, d) => (Number.isFinite(x) ? +x.toFixed(d) : "");
@@ -71,11 +72,12 @@ export class RocketEditor {
       h("button", { class: "btn", onclick: () => this.addRocket() }, "New"),
       h("button", { class: "btn", onclick: () => this.duplicate() }, "Duplicate"),
       h("button", { class: "btn", onclick: () => this.importRocket() }, "Import…"),
+      h("button", { class: "btn", onclick: () => this.addExample() }, "Examples…"),
       h("button", { class: "btn", onclick: () => download(`${safeName(r.name) || "rocket"}.rocket.json`, JSON.stringify(r, null, 2), "application/json") }, "Export…"),
       h("button", { class: "btn danger", disabled: this.store.rockets.length < 2, onclick: () => this.remove() }, "Delete"),
       h("div", { class: "spacer" }),
       h("span", { class: "note" }, "Shared with Heron and Owl. Changes save automatically."));
-    const form = h("div", { class: "rk-form" }, this.basics(r), this.stagesSection(r, U), this.recoverySection(r, U), this.siteSection(U));
+    const form = h("div", { class: "rk-form" }, this.basics(r), this.stagesSection(r, U), this.recoverySection(r, U), this.controlSection(r, U), this.siteSection(U));
     this.prevEl = h("div", { class: "rk-preview" });
     this.el.append(bar, h("div", { class: "rk-cols" }, form, this.prevEl));
     this.preview();
@@ -86,7 +88,38 @@ export class RocketEditor {
       h("div", { class: "panel-body" },
         h("div", { class: "grid-form two" },
           textField("Name", r.name, (v) => { r.name = v.trim() || "Rocket"; this.changed(true); }),
-          textField("Notes", r.notes, (v) => { r.notes = v; this.changed(); }, { placeholder: "Anything worth remembering" }))));
+          textField("Notes", r.notes, (v) => { r.notes = v; this.changed(); }, { placeholder: "Anything worth remembering" })),
+        h("div", { class: "grid-form", style: { marginTop: "10px" } },
+          numField("Stability", r.stability ?? AERO_DEFAULTS.stability, "cal", (v) => { if (v === null) return; if (v < 0.3) { toast("Stability must be at least 0.3 calibers.", "fault"); return; } r.stability = v; this.changed(true); },
+            { step: "any", min: 0.3, title: "How far the centre of pressure is behind the centre of gravity, in body diameters (OpenRocket and RockSim show it). Sets how hard the rocket turns into the wind." }))));
+  }
+
+  // ------------------------------------------------------------ airbrakes and target
+  controlSection(r, U) {
+    const ab = r.airbrakes || (r.airbrakes = { ...AIRBRAKE_DEFAULTS });
+    const body = h("div", { class: "panel-body col", style: { gap: "10px" } },
+      checkField("This rocket has airbrakes", !!ab.enabled, (v) => { ab.enabled = v; this.changed(true); }));
+    if (ab.enabled) body.append(
+      h("p", { class: "note", style: { margin: 0 } }, `The flight computer opens them with hil.actuator("${ab.name || "brake"}", 0 to 1). Mockingbird adds their drag and grades how close apogee lands to the target.`),
+      h("div", { class: "grid-form" },
+        this.num("Target apogee", r, "targetApogee", U.alt, { min: 0, structural: true, title: "The altitude the airbrakes aim for (0 = no target)" }),
+        this.num("Extra frontal area, fully open", ab, "area", U.area, { min: 0, structural: true, title: "How much area the brakes add facing the airflow" }),
+        this.num("Drag coefficient of the brakes", ab, "cd", null, { min: 0.1, structural: true, title: "Flat plates across the airflow are about 1.2" }),
+        this.num("Time from shut to fully open", ab, "travel", null, { unit: "s", min: 0.02, structural: true, title: "How fast the servo moves them" }),
+        textField("Name the firmware uses", ab.name || "brake", (v) => { ab.name = v.trim() || "brake"; this.changed(true); })));
+    return h("section", { class: "panel" }, h("div", { class: "panel-head" }, h("span", { class: "panel-title" }, "Airbrakes"), h("span", { class: "hint" }, "For a target apogee, like the American Rocketry Challenge")), body);
+  }
+
+  addExample() {
+    const list = exampleRockets();
+    const body = h("div", { class: "col", style: { gap: "8px" } }, h("p", { class: "note", style: { margin: 0 } }, "Adds a copy you can change. Your own rockets aren't touched."),
+      ...list.map((ex) => h("button", { class: "btn", style: { justifyContent: "flex-start", textAlign: "left" }, onclick: () => {
+        const copy = structuredClone(ex);
+        copy.id = this.store.rockets.some((x) => x.id === ex.id) ? uid() : ex.id;
+        this.store.rockets.push(copy); this.store.selected = copy.id;
+        dlg.close(); this.save(); this.onChange(this.rocket, true); this.render();
+      } }, h("div", null, h("b", null, ex.name), h("div", { class: "muted", style: { fontWeight: 400 } }, ex.notes)))));
+    const dlg = modal({ title: "Add an example rocket", body, actions: [{ label: "Cancel" }] });
   }
 
   // ------------------------------------------------------------ stages
@@ -112,12 +145,15 @@ export class RocketEditor {
       multi ? textField("Name", s.name, (v) => { s.name = v || `Stage ${k + 1}`; this.changed(true); }) : null,
       this.num("Dry mass", s, "dryMass", U.mass, { min: 0.001, title: "Everything in this stage except the motor" }),
       this.num("Body diameter", s, "diameter", U.len, { min: 0.001 }),
+      numField("Length", round(U.len.to(s.length > 0 ? s.length : stageLength(s)), U.len.d), U.len.u, (v) => { if (v === null || v <= 0) return; s.length = U.len.from(v); this.changed(true); },
+        { step: "any", min: 0, title: multi ? "This stage's length. The stack's length sets how quickly it turns into the wind." : "Nose tip to tail. Sets how quickly it turns into the wind." }),
       this.num("Drag coefficient (Cd)", s, "cd", null, { min: 0.05, title: multi ? "Cd of the whole stack while this is the bottom stage. Heron can measure it from a real flight." : "Typical model rockets are 0.4 to 0.6. Heron can measure it from a real flight." }),
       this.num("Motors in this stage", s, "motorCount", null, { min: 1, structural: true, title: "More than 1 for a cluster of identical motors" }));
     const opts = h("div", { class: "grid-form" });
     if (k > 0) {
       opts.append(selectField("Ignition", s.ignition, IGNITION, (v) => { s.ignition = v; this.changed(true); }));
-      if (s.ignition === "commanded") opts.append(this.num("Light it this long after the stage below burns out", s, "ignitionDelay", null, { unit: "s", min: 0 }));
+      if (s.ignition === "commanded") opts.append(this.num("Light it this long after the stage below burns out", s, "ignitionDelay", null, { unit: "s", min: 0 }),
+        numField("Don't light it past", s.maxTilt ?? 20, "° from vertical", (v) => { if (v === null || v <= 0) return; s.maxTilt = v; this.changed(true); }, { step: "any", min: 1, title: "Tilt lockout: Mockingbird checks the flight computer holds the stage when the rocket is tilted further than this" }));
     }
     if (k < last) opts.append(selectField("Separation", s.separation, SEPARATION, (v) => { s.separation = v; this.changed(true); }));
     return h("div", { class: "rk-card" }, head, grid, opts.childElementCount ? opts : null, this.motorBox(s));
@@ -245,6 +281,8 @@ export class RocketEditor {
         this.num("Wind speed", s, "windSpeed", U.wind, { min: 0 }),
         this.num("Wind from", s, "windDir", null, { unit: "°", title: "Compass direction the wind blows from (270 = from the west)" }),
         this.num("Launch rail length", s, "railLength", U.alt, { min: 0 }),
+        this.num("Rail angle", s, "railAngle", null, { unit: "° from vertical", min: 0, title: "Most rails are tilted a few degrees, away from spectators or into the wind" }),
+        this.num("Rail leans toward", s, "railDir", null, { unit: "°", title: "Compass direction the top of the rail leans toward (90 = east)" }),
         this.num("Latitude", s, "lat", null, { unit: "°", title: "For simulated GPS" }),
         this.num("Longitude", s, "lon", null, { unit: "°" }))));
   }

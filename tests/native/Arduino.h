@@ -83,3 +83,9 @@ class StdioSerial : public Stream {
 };
 
 extern StdioSerial Serial;
+
+#ifndef DEG_TO_RAD
+#define DEG_TO_RAD 0.017453292519943295
+#define RAD_TO_DEG 57.29577951308232
+#endif
+template <class T, class L, class H> static inline T constrain(T x, L lo, H hi) { return x < lo ? (T)lo : x > hi ? (T)hi : x; }

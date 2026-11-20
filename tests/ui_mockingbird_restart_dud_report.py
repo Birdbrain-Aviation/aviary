@@ -10,6 +10,27 @@ URL = "http://127.0.0.1:47730/"
 SHOTS = "tests/shots/"
 
 
+async def use_virtual(pg):
+    """Connect the virtual flight computer and show the Run tab, whatever an
+    earlier test left behind."""
+    if await pg.locator(".mb-main > .tabs button:has-text('Run')").count():
+        await pg.click(".mb-main > .tabs button:has-text('Run')")
+    btn = pg.locator("button:has-text('Try it with the virtual flight computer')")
+    if await btn.count() and await btn.first.is_visible():
+        await btn.first.click()
+        await pg.wait_for_selector(".verdict-box", timeout=90000)
+        return
+    pill = await pg.inner_text(".app-header .pill") if await pg.locator(".app-header .pill").count() else ""
+    if "Virtual" in pill:
+        return
+    if await pg.locator(".app-header button:has-text('Disconnect')").count():
+        await pg.click(".app-header button:has-text('Disconnect')")
+    await pg.click(".app-header button:has-text('Connect')")
+    await pg.click(".conn-card:has-text('Virtual')")
+    await pg.click(".modal-foot button:has-text('Connect')")
+    await pg.wait_for_selector(".pill:has-text('Virtual')", timeout=10000)
+
+
 async def main():
     os.makedirs(SHOTS, exist_ok=True)
     async with async_playwright() as p:
@@ -27,8 +48,7 @@ async def main():
         assert "Restart while coasting" in names and "Drogue charge doesn't go off" in names
 
         # restart test with the virtual board
-        await pg.click("button:has-text('Try it with the virtual flight computer')")
-        await pg.wait_for_selector(".verdict-box", timeout=60000)
+        await use_virtual(pg)
         await pg.click(".test-item:has-text('Restart while coasting')")
         await pg.click(".run-bar .seg button:has-text('20×')")
         await pg.click(".run-bar button:has-text('Start test')")

@@ -344,6 +344,14 @@ void MockingbirdHIL::telemetry(const char* n1, float v1, const char* n2, float v
   _port.print(n3); _port.print(','); _port.println(v3, 2);
 }
 
+void MockingbirdHIL::actuator(const char* name, float value) {
+  if (!_active) return;
+  _tag(F("$MBA,"));
+  _port.print(name);
+  _port.print(',');
+  _port.println(value, 3);
+}
+
 void MockingbirdHIL::log(const char* text) {
   if (!_active) return;
   _tag(F("$MBL,"));

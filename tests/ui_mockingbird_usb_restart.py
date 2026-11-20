@@ -112,6 +112,7 @@ async def main():
         await pg.click(".modal-foot button:has-text('Connect')")
         await pg.wait_for_selector(".pill:has-text('Ready: MockingbirdTry')", timeout=10000)
 
+        await pg.click(".mb-main > .tabs button:has-text('Run')")
         await pg.click(".test-item:has-text('Restart while coasting')")
         await pg.click(".run-bar .seg button:has-text('2×')")
         await pg.click(".run-bar button:has-text('Start test')")

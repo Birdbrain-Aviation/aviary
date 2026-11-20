@@ -11,7 +11,7 @@ import { FlightAnimation, phasesFromSamples } from "/shared/js/flightviz.js";
 import { openMonteCarlo, showResults as showMCResults } from "./montecarlo.js";
 import { replayFromLog } from "/shared/js/replay.js";
 import { SerialLink, serialSupported, describePort, BAUDS } from "/shared/js/serial.js";
-import { HILRun, VirtualFC, defaultTests, testApplies, testNeeds, describeFault, DEFAULT_FIELDS, DEFAULT_TOL, FAULT_TYPES, OLD_DEFAULT_IDS, FC_ALT, FC_VEL, withCS } from "/shared/js/hil.js";
+import { HILRun, VirtualFC, defaultTests, testApplies, testNeeds, describeFault, DEFAULT_FIELDS, DEFAULT_TOL, FAULT_TYPES, OLD_DEFAULT_IDS, FC_ALT, FC_VEL, FC_TILT, withCS } from "/shared/js/hil.js";
 import { loadRockets } from "/shared/js/rockets.js";
 import { RocketEditor } from "./rocket.js";
 import { renderSetup, editTest, pyroFor } from "./setup.js";
@@ -171,9 +171,9 @@ function buildRunTab() {
       ui.startBtn, ui.suiteBtn, ui.mcBtn, ui.replayBtn, ui.stopBtn, h("div", { class: "spacer" }), ui.live),
     ui.barNote);
 
-  const c1 = h("div"), c2 = h("div"), c3 = h("div");
+  const c1 = h("div"), c2 = h("div"), c3 = h("div"), c4 = h("div");
   ui.emptyRun = runEmpty();
-  ui.stack = h("div", { class: "chart-stack3" }, c1, c2, c3);
+  ui.stack = h("div", { class: "chart-stack3 four" }, c1, c2, c3, c4);
   ui.animBox = h("div", { class: "anim-box hidden" });
   ui.wholeBtn = h("button", { class: "btn small ghost", onclick: () => { ui.altC.o.streaming = false; ui.altC.resetView(); } }, "Whole flight");
   ui.viewSeg = seg([["charts", "Charts"], ["anim", "Animation"]], ui.view, setView);
@@ -196,9 +196,12 @@ function buildRunTab() {
   ui.velC = new TimeChart(c2, { group: g, xLabel: "", yIncludeZero: true, xFormat, streaming: false, xWindow: 60 });
   ui.velC.addSeries({ id: "truth", label: "True vertical speed", color: "--d-vel", digits: 0, width: 2 });
   ui.velC.addSeries({ id: "fc", label: "Flight computer's speed", color: "--d-acc", dash: [6, 4], digits: 0 });
-  ui.senC = new TimeChart(c3, { group: g, xLabel: "Time from launch (s)", xFormat, y2Label: "Acceleration (g)", streaming: false, xWindow: 60 });
+  ui.senC = new TimeChart(c3, { group: g, xLabel: "", xFormat, y2Label: "Acceleration (g)", streaming: false, xWindow: 60 });
   ui.senC.addSeries({ id: "baro", label: "Barometer altitude sent", color: "--d-prs", digits: 0, width: 1.25 });
   ui.senC.addSeries({ id: "acc", label: "Nose-axis acceleration sent", color: "--d-aux1", axis: "y2", unit: "g", digits: 2, width: 1.25 });
+  ui.ctlC = new TimeChart(c4, { group: g, xLabel: "Time from launch (s)", xFormat, yLabel: "Tilt (°)", y2Label: "Airbrakes (%)", yIncludeZero: true, streaming: false, xWindow: 60 });
+  ui.charts = [ui.altC, ui.velC, ui.senC, ui.ctlC];
+  setupCtlSeries(currentRocket()?.airbrakes?.enabled);
   setChartLabels();
   renderTestSel(); renderSpeed(); renderSide(true); renderRail("pad", null);
 }
@@ -207,7 +210,21 @@ function setChartLabels() {
   ui.altC.o.yLabel = `Altitude (${D.altUnit})`; ui.velC.o.yLabel = `Speed (${D.velUnit})`; ui.senC.o.yLabel = `Altitude (${D.altUnit})`;
   for (const s of [...ui.altC.series, ui.senC.getSeries("baro")]) s.unit = D.altUnit;
   for (const s of ui.velC.series) s.unit = D.velUnit;
-  for (const c of [ui.altC, ui.velC, ui.senC]) c.redraw();
+  for (const c of ui.charts) c.redraw();
+}
+
+// Tilt always; the airbrakes when the rocket has them.
+function setupCtlSeries(brakes) {
+  if (ui.ctlBrakes === !!brakes && ui.ctlC.series.length) return;
+  ui.ctlBrakes = !!brakes;
+  ui.ctlC.clearSeries();
+  ui.ctlC.addSeries({ id: "tilt", label: "True tilt", color: "--d-aux2", unit: "°", digits: 1, width: 1.75 });
+  ui.ctlC.addSeries({ id: "fcTilt", label: "Flight computer's tilt", color: "--d-acc", dash: [6, 4], unit: "°", digits: 1 });
+  if (brakes) {
+    ui.ctlC.addSeries({ id: "brake", label: "Airbrakes open", color: "--d-aux1", axis: "y2", unit: "%", digits: 0, width: 1.75 });
+    ui.ctlC.addSeries({ id: "fcBrake", label: "Commanded", color: "--d-aux1", axis: "y2", dash: [2, 3], unit: "%", digits: 0 });
+  }
+  ui.ctlC.o.y2Label = brakes ? "Airbrakes (%)" : "";
 }
 
 function runEmpty() {
@@ -254,7 +271,7 @@ function renderSpeed() {
 function changeSpeed(v) {
   const run = M.run;
   if (!run || v === M.speed) return;
-  if (v === 0) { M.ticker?.stop(); M.ticker = null; M.speed = 0; for (const c of [ui.altC, ui.velC, ui.senC]) c.o.streaming = false; instantLoop(); return; }
+  if (v === 0) { M.ticker?.stop(); M.ticker = null; M.speed = 0; for (const c of ui.charts) c.o.streaming = false; instantLoop(); return; }
   M.runStart = performance.now() - (run.sim.t / v) * 1000;
   M.speed = v;
 }
@@ -534,6 +551,7 @@ async function startRun(test, fromSuite = false) {
   M.geoSnap = test.replayGeo || siteGeo(site);
   M.txCount = 0; M.txBytes = 0; M.rxDuringRun = 0; M.slowLink = false; M.rates = []; M.log = []; M.lastFlush = 0;
   try {
+    setupCtlSeries(!!rocket.airbrakes?.enabled);
     M.run = new HILRun({ rocket, site, cfg: replay ? { ...cfg, replay } : cfg, faults: structuredClone(test.faults), send: sendLine, onEvent: onRunEvent, onSample, seed: test.seed ?? ((Math.random() * 1e9) | 0) });
   } catch (e) { toast("Couldn't start: " + e.message, "fault", 8000); M.run = null; return; }
   if (virtual) M.vfc = new VirtualFC({ rocket, pyro, upAxis: cfg.axis.up, upSign: cfg.axis.sign, send: (l) => fromFC(l) });
@@ -541,7 +559,7 @@ async function startRun(test, fromSuite = false) {
   logEvent(`Started ${test.name}`, "", `${cfg.rate}/s${speed > 1 ? `, ${speed}×` : speed === 0 ? ", instant" : ""}`, -cfg.padTime);
   M.run.start();
   M.runStart = performance.now();
-  for (const c of [ui.altC, ui.velC, ui.senC]) { c.o.streaming = speed !== 0; c.resetView(); }
+  for (const c of ui.charts) { c.o.streaming = speed !== 0; c.resetView(); }
   ui.emptyRun.classList.add("hidden");
   ui.sideTab = "events"; ui.sideTabs.set("events");
   renderBar(); renderSpeed(); renderSide(true); renderPill(); renderTestSel();
@@ -596,7 +614,7 @@ function stopRun(reason = "Stopped by you") {
 function resetRunView() {
   M.events = []; M.bands = new Map(); M.bandList = []; M.markers = []; M.ci = 0; M.fci = {}; M.fcState = null; M.report = null; M.ds = null;
   if (!M.suite) M.suiteSummary = null;
-  for (const c of [ui.altC, ui.velC, ui.senC]) { for (const s of c.series) { s.x = []; s.y = []; s.n = 0; } c.setMarkers([]); c.setBands([]); }
+  for (const c of ui.charts) { for (const s of c.series) { s.x = []; s.y = []; s.n = 0; } c.setMarkers([]); c.setBands([]); }
   ui.anim?.setData(null);
   renderRail("pad", null);
 }
@@ -654,15 +672,28 @@ function flushCharts() {
   if (!run) return;
   const L = run.launchAt, T = run.truth, S = run.sensed;
   const at = ui.altC.getSeries("truth"), vt = ui.velC.getSeries("truth"), sb = ui.senC.getSeries("baro"), sa = ui.senC.getSeries("acc");
+  const tt = ui.ctlC.getSeries("tilt"), bt = ui.ctlC.getSeries("brake");
   for (let i = M.ci; i < T.t.length; i++) {
     const x = T.t[i] - L;
     at.x.push(x); at.y.push(D.alt(T.h[i]));
     vt.x.push(x); vt.y.push(D.vel(T.v[i]));
     sb.x.push(x); sb.y.push(D.alt(S.baro[i]));
     sa.x.push(x); sa.y.push(S.acc[i]);
+    tt.x.push(x); tt.y.push(T.tilt[i]);
+    if (bt) { bt.x.push(x); bt.y.push(T.brake[i] * 100); }
   }
   M.ci = T.t.length;
-  for (const s of [at, vt, sb, sa]) s.n = s.x.length;
+  for (const s of [at, vt, sb, sa, tt, bt].filter(Boolean)) s.n = s.x.length;
+  // the board's own tilt and its brake commands
+  const feed = (target, ser, key, conv) => {
+    if (!target || !ser) return;
+    for (let i = M.fci[key] || 0; i < ser.t.length; i++) { const x = ser.t[i] - L; if (target.n && x < target.x[target.n - 1]) continue; target.x.push(x); target.y.push(conv(ser.v[i])); target.n++; }
+    M.fci[key] = ser.t.length;
+  };
+  const tName = Object.keys(run.fcTlm).find((n) => FC_TILT.test(n));
+  if (tName) feed(ui.ctlC.getSeries("fcTilt"), run.fcTlm[tName], "tilt:" + tName, (v) => v);
+  const bName = Object.keys(run.fcAct)[0];
+  if (bName) feed(ui.ctlC.getSeries("fcBrake"), run.fcAct[bName], "act:" + bName, (v) => v * 100);
   for (const [name, ser] of Object.entries(run.fcTlm)) {
     const target = FC_ALT.test(name) ? ui.altC.getSeries("fc") : FC_VEL.test(name) ? ui.velC.getSeries("fc") : null;
     if (!target) continue;
@@ -670,9 +701,9 @@ function flushCharts() {
     for (let i = M.fci[name] || 0; i < ser.t.length; i++) { const x = ser.t[i] - L; if (target.n && x < target.x[target.n - 1]) continue; target.x.push(x); target.y.push(conv(ser.v[i])); target.n++; }
     M.fci[name] = ser.t.length;
   }
-  if (M.bandsDirty) { M.bandsDirty = false; const b = bandSpecs(M.bandList); for (const c of [ui.altC, ui.velC, ui.senC]) c.setBands(b); }
+  if (M.bandsDirty) { M.bandsDirty = false; const b = bandSpecs(M.bandList); for (const c of ui.charts) c.setBands(b); }
   if (M.markersDirty) { M.markersDirty = false; applyMarkers(M.markers); }
-  for (const c of [ui.altC, ui.velC, ui.senC]) c.redraw();
+  for (const c of ui.charts) c.redraw();
   renderRail(run.sim.phase, run);
   if (ui.view === "anim" && performance.now() - (M.lastAnimFeed || 0) > 150) { M.lastAnimFeed = performance.now(); feedAnim(); }
 }
@@ -685,6 +716,7 @@ function applyMarkers(list) {
   ui.altC.setMarkers(m);
   ui.velC.setMarkers(m.map((x) => ({ ...x, label: "" })));
   ui.senC.setMarkers(m.map((x) => ({ ...x, label: "" })));
+  ui.ctlC.setMarkers(m.map((x) => ({ ...x, label: "" })));
 }
 
 function renderRail(phase, run) {
@@ -729,7 +761,7 @@ async function finishRun() {
   set.history.unshift({ dir, testId: test.id, test: test.name, rocketId: rocket.id, rocket: rocket.name, verdict: stopped ? "stopped" : rep.verdict, at, apogee: rep.outcome?.apogee });
   set.history = set.history.slice(0, 60);
   set.save();
-  for (const c of [ui.altC, ui.velC, ui.senC]) { c.o.streaming = false; c.resetView(); }
+  for (const c of ui.charts) { c.o.streaming = false; c.resetView(); }
   if (M.suite) M.suite.results.push({ test: test.name, verdict: stopped ? "stopped" : rep.verdict, firstFail: rep.checks?.find((c) => !c.ok)?.label || "", dir,
     checks: (rep.checks || []).map((c) => ({ label: c.label, ok: c.ok, detail: c.detail })),
     ...(M.suite.onDone ? { rep: { verdict: rep.verdict, checks: rep.checks, outcome: rep.outcome }, params: test.mcParams } : {}) });
@@ -763,7 +795,7 @@ function setView(v) {
   if (v === "anim") {
     if (!ui.anim) ui.anim = new FlightAnimation(ui.animBox, { units: D, name: "Mockingbird run" });
     feedAnim(true);
-  } else for (const c of [ui.altC, ui.velC, ui.senC]) c.redraw();
+  } else for (const c of ui.charts) c.redraw();
 }
 
 const animEvents = (markers) => markers.filter((k) => k.kind !== "fc").map((k) => ({ t: k.x, label: k.kind === "apogee" ? `Apogee ${fmtA(k.h)}` : k.text, kind: k.kind === "bad" ? "bad" : "" }));
@@ -789,7 +821,9 @@ function feedAnim(fresh = false) {
 function datasetFromRun(run) {
   const L = run.launchAt;
   const fc = (re) => { const k = Object.keys(run.fcTlm).find((n) => re.test(n)); return k ? { x: run.fcTlm[k].t.map((t) => t - L), y: run.fcTlm[k].v } : { x: [], y: [] }; };
-  return { x: run.truth.t.map((t) => t - L), h: run.truth.h.slice(), v: run.truth.v.slice(), baro: run.sensed.baro.slice(), acc: run.sensed.acc.slice(), ph: run.truth.phase.slice(), east: run.truth.x.slice(), north: run.truth.y.slice(), site: structuredClone(M.siteSnap || M.store.site), geo: M.geoSnap, fcAlt: fc(FC_ALT), fcVel: fc(FC_VEL), markers: M.markers.slice(), bands: M.bandList.map((b) => ({ ...b })), phase: run.sim.phase, end: run.sim.t - L };
+  const act = Object.keys(run.fcAct)[0];
+  return { x: run.truth.t.map((t) => t - L), h: run.truth.h.slice(), v: run.truth.v.slice(), baro: run.sensed.baro.slice(), acc: run.sensed.acc.slice(), ph: run.truth.phase.slice(), east: run.truth.x.slice(), north: run.truth.y.slice(), site: structuredClone(M.siteSnap || M.store.site), geo: M.geoSnap, fcAlt: fc(FC_ALT), fcVel: fc(FC_VEL), markers: M.markers.slice(), bands: M.bandList.map((b) => ({ ...b })), phase: run.sim.phase, end: run.sim.t - L,
+    tilt: run.truth.tilt.slice(), brake: run.rocket.airbrakes?.enabled ? run.truth.brake.slice() : null, fcTilt: fc(FC_TILT), fcBrake: act ? { x: run.fcAct[act].t.map((t) => t - L), y: run.fcAct[act].v.slice() } : { x: [], y: [] } };
 }
 
 function drawDataset(ds, replay = true) {
@@ -800,8 +834,12 @@ function drawDataset(ds, replay = true) {
   set2(ui.senC, "acc", ds.x, ds.acc);
   set2(ui.altC, "fc", ds.fcAlt.x, ds.fcAlt.y.map(D.alt));
   set2(ui.velC, "fc", ds.fcVel.x, ds.fcVel.y.map(D.vel));
+  setupCtlSeries(!!ds.brake);
+  if (ds.tilt) set2(ui.ctlC, "tilt", ds.x, ds.tilt);
+  if (ds.fcTilt) set2(ui.ctlC, "fcTilt", ds.fcTilt.x, ds.fcTilt.y);
+  if (ds.brake) { set2(ui.ctlC, "brake", ds.x, ds.brake.map((b) => b * 100)); set2(ui.ctlC, "fcBrake", ds.fcBrake.x, ds.fcBrake.y.map((b) => b * 100)); }
   const b = bandSpecs(ds.bands);
-  for (const c of [ui.altC, ui.velC, ui.senC]) { c.setBands(b); c.o.streaming = false; c.resetView(); }
+  for (const c of ui.charts) { c.setBands(b); c.o.streaming = false; c.resetView(); }
   applyMarkers(ds.markers);
   renderRail(ds.phase, null);
   ui.clock.textContent = Number.isFinite(ds.end) ? `${tlabel(ds.end)} s` : "–";
@@ -832,8 +870,10 @@ function datasetFromCSV(text, doc) {
   const col = (n) => head.indexOf(n);
   const iT = col("time_s"), iH = col("alt_m"), iV = col("vel_mps"), iP = col("phase"), iB = col("sensed_baro_alt_m"), iA = col("sensed_accel_g");
   const fcA = head.findIndex((n) => n.startsWith("fc_") && FC_ALT.test(n.slice(3))), fcV = head.findIndex((n) => n.startsWith("fc_") && FC_VEL.test(n.slice(3)));
-  const iE = col("east_m"), iN = col("north_m");
-  const ds = { east: iE >= 0 ? [] : null, north: iN >= 0 ? [] : null, site: doc.site || null, geo: doc.geo || null, x: [], h: [], v: [], ph: [], baro: [], acc: [], fcAlt: { x: [], y: [] }, fcVel: { x: [], y: [] }, markers: doc.markers || [], bands: doc.bands || [], phase: "pad", end: NaN };
+  const iE = col("east_m"), iN = col("north_m"), iTl = col("tilt_deg"), iBr = col("airbrake");
+  const fcT = head.findIndex((n) => n.startsWith("fc_") && FC_TILT.test(n.slice(3))), aB = head.findIndex((n) => n.startsWith("act_"));
+  const ds = { east: iE >= 0 ? [] : null, north: iN >= 0 ? [] : null, site: doc.site || null, geo: doc.geo || null, x: [], h: [], v: [], ph: [], baro: [], acc: [], fcAlt: { x: [], y: [] }, fcVel: { x: [], y: [] }, markers: doc.markers || [], bands: doc.bands || [], phase: "pad", end: NaN,
+    tilt: iTl >= 0 ? [] : null, brake: iBr >= 0 && doc.rocketProfile?.airbrakes?.enabled ? [] : null, fcTilt: { x: [], y: [] }, fcBrake: { x: [], y: [] } };
   const shift = (doc.settings?.padTime ?? 0) && doc.liftoff !== undefined ? doc.liftoff - doc.settings.padTime : 0; // csv is relative to liftoff
   const num = (s) => (s === "" || s === undefined ? NaN : Number(s));
   for (const ln of lines) {
@@ -843,6 +883,10 @@ function datasetFromCSV(text, doc) {
     ds.baro.push(iB >= 0 ? num(c[iB]) : NaN); ds.acc.push(iA >= 0 ? num(c[iA]) : NaN);
     if (fcA >= 0 && c[fcA] !== "") { ds.fcAlt.x.push(x); ds.fcAlt.y.push(num(c[fcA])); }
     if (fcV >= 0 && c[fcV] !== "") { ds.fcVel.x.push(x); ds.fcVel.y.push(num(c[fcV])); }
+    if (ds.tilt) ds.tilt.push(num(c[iTl]));
+    if (ds.brake) ds.brake.push(num(c[iBr]));
+    if (fcT >= 0 && c[fcT] !== "") { ds.fcTilt.x.push(x); ds.fcTilt.y.push(num(c[fcT])); }
+    if (aB >= 0 && c[aB] !== "") { ds.fcBrake.x.push(x); ds.fcBrake.y.push(num(c[aB])); }
     ds.ph.push(iP >= 0 ? c[iP] : "");
     if (ds.east) { ds.east.push(num(c[iE])); ds.north.push(num(c[iN])); }
     if (iP >= 0) ds.phase = c[iP] || ds.phase;

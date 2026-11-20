@@ -189,6 +189,12 @@ export function renderSetup(el, ctx) {
       num("…or at least", "estAlt", D.altUnit, altConv, "Altitude error that is always allowed"),
       num("Speed: off by", "estVelFrac", "%", pctConv, "Typical error allowed, as a share of top speed"),
       num("…or at least", "estVel", D.velUnit, velConv, "Speed error that is always allowed")),
+    h("div", { class: "sub-title" }, "Tilt and airbrakes"),
+    h("p", { class: "note", style: { margin: 0 } }, "An upper stage due while the rocket is past its tilt limit (Rocket tab) must not be lit. With airbrakes and a target apogee, apogee is graded against the target; a target the rocket can't reach with the brakes shut, or can't get down to with them fully open, isn't held against the flight computer."),
+    h("div", { class: "grid-form" },
+      num("Tilt: either way within", "tiltMargin", "°", null, "Close to the limit, lighting and holding off both pass"),
+      num("Apogee target: off by", "targetFrac", "%", pctConv, "Allowed miss, as a share of the target"),
+      num("…or at least", "targetMin", D.altUnit, altConv, "Miss that is always allowed")),
     h("div", null, h("button", { class: "btn small ghost", onclick: () => { set.run.tol = { ...DEFAULT_TOL }; save(); renderSetup(el, ctx); } }, "Restore the usual limits")));
 
   // ---------------------------------------------------------- library help
@@ -210,8 +216,10 @@ void loop() {
   // ... your flight logic ...
   // when it decides to fire a channel:
   //   if (hil.active()) hil.pyro(1);  else firePyro(1);
-  // its own estimates, scored against the truth (metres, m/s):
-  //   hil.telemetry("alt", altitude, "vel", velocity);
+  // its own estimates, scored against the truth (metres, m/s, degrees):
+  //   hil.telemetry("alt", altitude, "vel", velocity, "tilt", tilt);
+  // airbrakes, 0 shut to 1 fully open:
+  //   hil.actuator("brake", 0.4);
 }`;
   const lib = h("div", { class: "panel-body col", style: { gap: "8px" } },
     h("p", { style: { margin: 0 } }, "The ", h("b", null, "MockingbirdHIL"), " library is in the Arduino folder of the download. Copy it into Documents\\Arduino\\libraries, restart the Arduino IDE, and open File › Examples › MockingbirdHIL."),

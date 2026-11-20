@@ -112,6 +112,12 @@ class MockingbirdHIL {
   void telemetry(const char* name, float value);      // plotted against the truth, e.g. "alt", "vel"
   void telemetry(const char* n1, float v1, const char* n2, float v2);
   void telemetry(const char* n1, float v1, const char* n2, float v2, const char* n3, float v3);
+
+  // A control output that moves the simulated rocket. hil.actuator("brake", 0.4)
+  // opens the airbrakes 40% (0 closed, 1 fully open). Sends $MBA,brake,0.4.
+  // Send it when the command changes (and every so often); the simulation
+  // moves the brakes at their servo speed, set on the Rocket tab.
+  void actuator(const char* name, float value);
   void log(const char* text);                         // a note shown in Mockingbird's event list
   void log(const __FlashStringHelper* text);
 

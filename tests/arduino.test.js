@@ -83,3 +83,30 @@ test("a restart mid-flight really restarts the sketch, and the test resumes", { 
   assert.equal(rep.verdict, "fail");
   assert.match(r.detail, /forgot it was flying|save the flight phase/i);
 });
+
+const haveAirbrakes = existsSync(bin("MockingbirdAirbrakes"));
+const airbrakeRocket = () => exampleRockets().find((r) => r.id === "example-airbrakes");
+
+test("the airbrake example lands on the target apogee, on a normal and a strong motor", { skip: !haveAirbrakes && "build the native examples first" }, async () => {
+  for (const id of ["nominal", "strong-motor"]) {
+    const t = defaultTests(airbrakeRocket()).find((x) => x.id === id);
+    const { rep, lines } = await runAgainstSketch("MockingbirdAirbrakes", airbrakeRocket(), { faults: t.faults });
+    console.log(id, rep.verdict, rep.checks.map((c) => `${c.label}: ${c.actual} ${c.ok ? "ok" : "FAIL " + c.detail}`), rep.detections.filter((d) => /Airbrakes|Tilt/.test(d.label)).map((d) => d.value));
+    assert.ok(lines.some((l) => l.startsWith("$MBA,brake,")), "it sent brake commands");
+    const c = rep.checks.find((x) => x.label === "Apogee target");
+    assert.ok(c && c.ok, JSON.stringify(c));
+    assert.ok(rep.checks.find((x) => x.label === "Airbrakes under power").ok);
+    assert.equal(rep.verdict, "pass");
+  }
+});
+
+test("a sketch's tilt estimate holds the sustainer on a tilted launch (virtual board)", async () => {
+  // the virtual board carries the same tilt estimate as the airbrake example
+  const { runVirtual } = await import("../web/shared/js/hil.js");
+  const rocket = exampleRockets()[1];
+  const t = defaultTests(rocket).find((x) => x.id === "tilted-launch");
+  const rep = runVirtual({ rocket, site: { elevation: 120, tempC: 20 }, cfg: { rate: 50, padTime: 5, pyro: defaultPyro(rocket) }, faults: t.faults, seed: 2 });
+  const c = rep.checks.find((x) => x.label === "Sustainer ignition");
+  assert.equal(c.actual, "held off");
+  assert.equal(rep.verdict, "pass");
+});

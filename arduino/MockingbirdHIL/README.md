@@ -12,6 +12,7 @@ Copy this `MockingbirdHIL` folder into `Documents\Arduino\libraries`, then resta
 
 - **MockingbirdTry**: a complete small dual-deploy flight computer that only flies inside Mockingbird. Flash it to any board to see a test work end to end.
 - **AddToYourFlightComputer**: the pattern for adding Mockingbird to your own firmware.
+- **MockingbirdAirbrakes**: dual deploy plus airbrakes that aim for a target apogee (as in the American Rocketry Challenge), with a tilt estimate from the gyros. Matches the "Example: airbrakes to a target" rocket in Mockingbird.
 
 ## Use
 
@@ -66,6 +67,8 @@ A value is `NAN` when it wasn't sent, or during a sensor dropout fault.
 | `event(F("APOGEE"))` | `$MBE,APOGEE` | Detection timing. Also `LAUNCH`, `BURNOUT`, `LANDED`. |
 | `state(F("COAST"))` | `$MBE,STATE,COAST` | Shown live and in the event list. |
 | `telemetry("alt", a, "vel", v)` | `$MBT,alt,a,vel,v` | Drawn as dashed lines against the true flight, and scored: the result shows how far off the board's altitude and speed were, and a test fails when they're off by more than the limits on the Flight computer tab. Use names `alt` and `vel`, in **metres** and **m/s**. |
+| `telemetry(…, "tilt", deg)` | `$MBT,…,tilt,deg` | The board's tilt from vertical, drawn against the true tilt. |
+| `actuator("brake", e)` | `$MBA,brake,e` | Moves the simulated airbrakes: 0 shut to 1 fully open. They travel at the servo speed set on the Rocket tab, and their drag changes the flight. Send it when the command changes and every 0.2 s or so. |
 | `log(F("text"))` | `$MBL,text` | A note in the event list. |
 
 Reports are only sent while a test is running, so a real flight's serial output stays clean. `DROGUE`, `MAIN`, `IGNITE` and `SEPARATE` events also work instead of pyro channel numbers.
@@ -105,6 +108,18 @@ The virtual flight computer in Mockingbird works this way; the MockingbirdTry ex
 
 If your board needs something else to restart (an external watchdog, a power switch), define your own `void mbRestart() { ... }` in the sketch and the library uses it. On a Nano with the old bootloader, a watchdog reset can loop; flash the newer bootloader or define `mbRestart()`.
 
+## Tilt and airbrakes
+
+The simulated rocket isn't stuck on a vertical line: the launch rail can lean, wind pushes it off the rail and it turns into the wind (weathercocking), so it flies tilted and arcs over toward apogee. The accelerometer and gyros read in the board's own axes, so a tilted flight looks the way it would on a real board.
+
+**Tilt lockout.** For an upper stage, set *Don't light it past* on the Rocket tab (20° by default). If the rocket is further from vertical than that when the stage is due, the test expects the board **not** to light it; the **Tilted launch** test checks exactly this. A simple way to know the tilt: learn which way is down from the accelerometer on the pad (only while it reads about 1 g, never under thrust), then turn that with the gyro rates from liftoff. MockingbirdAirbrakes shows how in about 30 lines.
+
+**Airbrakes.** Turn on *This rocket has airbrakes* on the Rocket tab and give a target apogee. The board opens them with `hil.actuator("brake", 0.0 to 1.0)`. Mockingbird checks they stay shut while a motor burns and grades apogee against the target. A target the rocket can't reach even with the brakes shut, or can't get down to with them fully open, isn't held against the flight computer. Run a Monte Carlo batch to see the spread of misses over varied wind, motors and mass.
+
+Two things that cost airbrake teams height, both caught by these tests:
+- A barometer-only speed lags behind while the rocket slows, so the controller thinks it's faster than it is and brakes too hard. Integrate the accelerometer from liftoff (when the speed is known to be zero) and lean on the barometer only a little.
+- The standard altitude formula assumes 15 °C at the ground. On a 20 °C day it reads about 1.7% low, enough to miss a target by 10 m. Scale by the pad temperature: `h = 44330.77 × (T_pad + 273.15) / 288.15 × (1 − (p / p0)^0.190263)`.
+
 ## Backup charges
 
 To test a backup, give the device a second pyro channel on Mockingbird's Flight computer tab and have the firmware fire it too (a second later for the drogue, or lower for the main). The **Drogue charge doesn't go off** test makes the first charge fired for the apogee device do nothing, like an open e-match; it passes only if the backup deploys the parachute.
@@ -128,7 +143,8 @@ PC → board   $MBC,START,<samples per second>,<time scale>*HH
              $MBC,REBOOT*HH                     board answers $MBE,RESTARTING and restarts
              $MBC,RESUME,<rate>,<time scale>*HH carry on after a restart (no testStarted)
 board → PC   $MBE,<EVENT>[,<value>]             READY, PYRO, APOGEE, STATE, STATS, RESTARTING, NORESTART...
-             $MBT,<name>,<value>[,<name>,<value>...]
+             $MBT,<name>,<value>[,<name>,<value>...]   values to plot (alt, vel, tilt...)
+             $MBA,<name>,<value>[,<name>,<value>...]   control outputs (brake: 0 to 1)
              $MBL,<text>
 ```
 

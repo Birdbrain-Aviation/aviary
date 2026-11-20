@@ -110,7 +110,7 @@ export function showResults(ctx, mc, results) {
     h("thead", null, h("tr", null, ["Output", "Passed", "Timing, 90% of flights", "Typical", "Worst", ""].map((x) => h("th", null, x)))),
     h("tbody", null, s.checks.map((c) => {
       const e = c.errAlt || c.err, isAlt = !!c.errAlt;
-      const f = (x) => (isAlt ? `${x >= 0 ? "+" : "−"}${D.fmtAlt(Math.abs(x))} ${D.altUnit}` : fmtS(x));
+      const f = (x) => { if (!isAlt) return fmtS(x); const s = D.fmtAlt(Math.abs(x)); return `${/^0(\D|$)/.test(s) ? "" : x >= 0 ? "+" : "−"}${s} ${D.altUnit}`; };
       const worst = e ? (Math.abs(e.min) > Math.abs(e.max) ? e.min : e.max) : null;
       const cv = h("canvas", { class: "mc-hist", width: 220, height: 34 });
       requestAnimationFrame(() => histogram(cv, results.map((r) => { const k = r.rep.checks.find((x) => x.label === c.label); return k ? { v: isAlt ? k.errAlt : k.err, ok: k.ok } : null; }).filter((x) => x && Number.isFinite(x.v))));
@@ -129,11 +129,11 @@ export function showResults(ctx, mc, results) {
   } else body.append(h("p", { class: "note" }, "Every flight passed."));
   const csv = () => {
     const labels = s.checks.map((c) => c.label);
-    const rows = [["run", "verdict", "wind_mps", "wind_from_deg", "thrust", "mass", "drag", "noise", "pad_s", "apogee_m", "landing_mps", ...labels.flatMap((l) => [`${l} ok`, `${l} error`])].join(",")];
+    const rows = [["run", "verdict", "wind_mps", "wind_from_deg", "thrust", "mass", "drag", "noise", "pad_s", "apogee_m", "landing_mps", "max_tilt_deg", ...labels.flatMap((l) => [`${l} ok`, `${l} error`])].join(",")];
     results.forEach((r, i) => {
       const p = r.params;
       rows.push([i + 1, r.rep.verdict, p.wind.toFixed(2), p.windDir.toFixed(0), p.thrust.toFixed(3), p.mass.toFixed(3), p.cd.toFixed(3), p.noise.toFixed(2), p.padTime.toFixed(1),
-        r.rep.outcome.apogee?.toFixed(1) ?? "", r.rep.outcome.landingSpeed?.toFixed(2) ?? "",
+        r.rep.outcome.apogee?.toFixed(1) ?? "", r.rep.outcome.landingSpeed?.toFixed(2) ?? "", r.rep.outcome.maxTilt?.toFixed(1) ?? "",
         ...labels.flatMap((l) => { const c = r.rep.checks.find((x) => x.label === l); return [c ? (c.ok ? 1 : 0) : "", c ? (Number.isFinite(c.errAlt) ? c.errAlt.toFixed(2) : Number.isFinite(c.err) ? c.err.toFixed(3) : "") : ""]; })].join(","));
     });
     return rows.join("\n") + "\n";

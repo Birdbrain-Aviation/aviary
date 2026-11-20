@@ -83,12 +83,15 @@
 <h2 id="rockets">Rocket profiles</h2>
 <p>All three apps share one list of rockets, edited on Mockingbird's <b>Rocket</b> tab. A profile has:</p>
 <ul>
-  <li><b>Stages</b>: dry mass, diameter, drag coefficient, and motor (or a cluster of identical motors). Upper stages can be lit by the flight computer after a delay, or straight from the stage below, and can fall away at burnout or be separated by the flight computer.</li>
+  <li><b>Stages</b>: dry mass, diameter, length, drag coefficient, and motor (or a cluster of identical motors). Upper stages can be lit by the flight computer after a delay, or straight from the stage below, and can fall away at burnout or be separated by the flight computer. An upper stage also has a tilt limit (<b>Don't light it past</b>, 20° from vertical by default).</li>
+  <li><b>Stability</b>, in calibers, as OpenRocket or RockSim shows it. With the length, it sets how hard the rocket turns into the wind.</li>
   <li><b>Motors</b>: load the real thrust curve as a <code>.eng</code> or <code>.rse</code> file from <a href="https://www.thrustcurve.org">thrustcurve.org</a>. Loaded files are copied to <code>Documents\Aviary\Motors</code>. When you only know the name, <b>Quick motor</b> builds an approximate curve from a designation such as G80.</li>
   <li><b>Recovery</b>: drogues, mains, single parachutes and streamers. Each opens at apogee (plus a delay), at an altitude on the way down, at a time after liftoff, or from the motor's ejection charge, and has a <b>pyro channel</b> number.</li>
-  <li><b>Launch site</b>, shared by every rocket: elevation, temperature, wind, rail length and location.</li>
+  <li><b>Airbrakes</b> (optional): their extra area when fully open, drag coefficient, how fast the servo opens them, and a target apogee to aim for.</li>
+  <li><b>Launch site</b>, shared by every rocket: elevation, temperature, wind, rail length, rail angle and location.</li>
 </ul>
-<p>The prediction beside the form updates as you type: apogee, top speed, rail exit speed, descent rates, landing speed and drift. It also warns about low thrust-to-weight, slow rail exit, parachutes opening too fast and hard landings. The simulator is a vertical (one-dimensional) model, so it's a good check rather than a replacement for OpenRocket.</p>
+<p><b>Examples…</b> adds a copy of any example rocket, including one with airbrakes, without touching your own.</p>
+<p>The prediction beside the form updates as you type: apogee, top speed, rail exit speed, descent rates, landing speed and drift. It also warns about low thrust-to-weight, slow rail exit, parachutes opening too fast and hard landings. Up to apogee the simulator flies the rocket as a body that can tilt: the rail can lean, and off the rail the wind turns it (weathercocking), so it arcs over toward apogee and loses a little height in wind. After apogee it falls and drifts with the wind. It's a good check rather than a replacement for OpenRocket.</p>
 
 <h2 id="mockingbird">Mockingbird</h2>
 <h3>How a test works</h3>
@@ -123,12 +126,19 @@
   <tr><td>Motor quits early (CATO)</td><td>The motor stops 0.4 s into its burn. Recovery still has to work from a low apogee.</td></tr>
   <tr><td>Upper stage doesn't light</td><td>Staged rockets only: the igniter fires but the motor never lights.</td></tr>
   <tr><td>Drogue charge doesn't go off</td><td>The first charge fired for the apogee parachute does nothing, like an open e-match. Passes only if a backup charge on another channel deploys it.</td></tr>
+  <tr><td>Gusty crosswind</td><td>A 9 m/s wind and a gust off the rail. The rocket turns into the wind and flies tilted, so the accelerometer no longer points straight up.</td></tr>
+  <tr><td>Tilted launch</td><td>Staged rockets only: the rail leans 25°, so the rocket is past the tilt limit when the upper stage is due. The board must not light it.</td></tr>
+  <tr><td>Strong motor</td><td>Rockets with airbrakes only: 8% more thrust. The brakes have to shed the extra height to hit the target.</td></tr>
   <tr><td>Restart while coasting</td><td>The board restarts 1 s after burnout, like a brownout. It has to remember it's flying and still catch apogee. Needs MockingbirdHIL 1.2 or newer.</td></tr>
 </table>
-<p>Use <b>Edit</b> to change a test or <b>New test</b> to build your own from any mix of faults: pressure jumps and drift, noisy or frozen sensors, dropouts, data gaps, bumps, accelerometer range, thrust scale, early motor cutoff, failed ignition, a charge that doesn't go off, and a restart. Each fault starts a set time before or after liftoff, burnout or apogee. If you already had a list of tests from an earlier version, the new standard tests are added to the end of it.</p>
+<p>Use <b>Edit</b> to change a test or <b>New test</b> to build your own from any mix of faults: pressure jumps and drift, noisy or frozen sensors, dropouts, data gaps, bumps, accelerometer range, thrust scale, early motor cutoff, failed ignition, a charge that doesn't go off, a restart, wind, gusts, the rail's angle, spin, and jammed airbrakes. Each fault starts a set time before or after liftoff, burnout or apogee. If you already had a list of tests from an earlier version, the new standard tests are added to the end of it.</p>
 <h3>Backup charges and restarts</h3>
 <p>To test a backup, give the parachute a second pyro channel on the Flight computer tab and have your firmware fire it too. When the first charge fails, the backup is graded with a little more room: up to 3 s later for an apogee deployment, or up to half the altitude lower for an altitude deployment. A backup that also fires on a normal flight is noted, not failed.</p>
 <p>In a restart test, Mockingbird asks the board to restart and the simulated rocket keeps flying while it boots. When it says it's ready, the test carries on from where the rocket is now; the firmware isn't told a new test started. A board passes if it comes back quickly and still does its job, which means keeping its flight phase and ground pressure in EEPROM or flash. If it comes back thinking it's on the pad, the result says so. Boards with USB built into the chip (Pico, ESP32-S3, Teensy) drop off USB while they restart; Mockingbird reopens the port when it comes back. A board that restarts by itself during any test fails that test.</p>
+<h3>Tilt and airbrakes</h3>
+<p>The accelerometer and gyros are read in the board's own axes as the rocket tilts and rolls, and the fourth chart shows the true tilt (and the board's, if it sends <code>hil.telemetry("tilt", …)</code>).</p>
+<p><b>Tilt lockout</b>: if the rocket is further from vertical than an upper stage's limit when that stage is due, the check expects the board to hold it; lighting it fails. Within 3° of the limit either choice passes. A board that restarted around the time the stage was due may also hold it.</p>
+<p><b>Airbrakes</b>: the board opens them with <code>hil.actuator("brake", 0 to 1)</code>; the chart shows what it commanded and where the brakes actually were. Two checks: the brakes stay shut while a motor burns, and apogee lands within 2% of the target (at least 3 m). If the rocket couldn't reach the target with the brakes shut, or couldn't get down to it with them fully open, that's not held against the flight computer. A <b>Monte Carlo</b> batch shows the spread of misses over varied wind, thrust and mass. The library's <b>MockingbirdAirbrakes</b> example is a complete controller to start from.</p>
 <h3>Reading the result</h3>
 <ul>
   <li><b>Checks</b>: each deployment and ignition the rocket profile expects, with what happened. An apogee deployment must fire within 1 s early to 2 s late, an altitude deployment within 10% of its altitude, and so on. Change the limits on the Flight computer tab.</li>
@@ -154,7 +164,7 @@
 
 <h2 id="library">The Arduino library (MockingbirdHIL)</h2>
 <p>It's in the <code>Arduino</code> folder of this download. Copy the <code>MockingbirdHIL</code> folder into <code>Documents\Arduino\libraries</code> and restart the Arduino IDE. It works on AVR (Uno, Nano), RP2040 and RP2350, STM32, ESP32, Teensy and other Arduino cores, uses no heap and about 330 bytes of RAM.</p>
-<p>Start with <b>File › Examples › MockingbirdHIL › MockingbirdTry</b>, a complete small dual-deploy flight computer that only flies inside Mockingbird. It never touches any pins, so you can flash it to a bare board and see a test pass. <b>AddToYourFlightComputer</b> shows the pattern for your own firmware:</p>
+<p>Start with <b>File › Examples › MockingbirdHIL › MockingbirdTry</b>, a complete small dual-deploy flight computer that only flies inside Mockingbird. It never touches any pins, so you can flash it to a bare board and see a test pass. <b>MockingbirdAirbrakes</b> adds airbrakes aimed at a target apogee and a tilt estimate from the gyros. <b>AddToYourFlightComputer</b> shows the pattern for your own firmware:</p>
 <pre><code>#include &lt;MockingbirdHIL.h&gt;
 MockingbirdHIL hil(Serial);
 
@@ -175,6 +185,7 @@ void loop() {
   // ... your flight logic ...
   // if (hil.active()) hil.pyro(1); else firePyro(1);
   // hil.event(F("APOGEE"));  hil.state(F("COAST"));  hil.telemetry("alt", alt, "vel", vel);
+  // hil.actuator("brake", 0.4);   // airbrakes 40% open (0 shut, 1 fully open)
 }</code></pre>
 <p>Reports are only sent while a test is running, so a real flight's serial output stays clean. The library's own <code>README.md</code> lists every function.</p>
 <h3>Tips</h3>
