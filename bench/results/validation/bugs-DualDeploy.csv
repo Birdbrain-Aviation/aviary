@@ -1,0 +1,19 @@
+id,line,operator,description,status,worst,caught_by
+B01-no-arm-check,68,curated,The arm switch is read but never checked before firing,killed,critical,disarmed
+B02-no-pinmode,77,curated,Pyro pins never set to OUTPUT,killed,critical,nominal; noisy-baro; pressure-dip; ejection-spike; baro-freeze; data-gap; pad-knock; long-pad; weak-motor; accel-clip; cato; crosswind; reboot-coast; reboot-ejection
+B03-pulse-never-ends,114,curated,Channels are switched on but never off,killed,serious,nominal; noisy-baro; pressure-dip; ejection-spike; baro-freeze; data-gap; pad-knock; long-pad; weak-motor; accel-clip; cato; crosswind; reboot-coast; reboot-ejection
+B04-pulse-too-short,19,curated,"A 5 ms pulse, too short for an e-match",killed,serious,nominal; noisy-baro; pressure-dip; ejection-spike; baro-freeze; data-gap; pad-knock; long-pad; weak-motor; accel-clip; cato; crosswind; reboot-coast; reboot-ejection
+B05-refires,67,curated,"fire() doesn't remember what already fired, so it fires again every pass",killed,serious,nominal; noisy-baro; pressure-dip; ejection-spike; baro-freeze; data-gap; pad-knock; long-pad; weak-motor; accel-clip; crosswind; reboot-coast; reboot-ejection
+B06-main-in-feet,17,curated,Main altitude written in feet where metres are meant,killed,minor,nominal; noisy-baro; pressure-dip; ejection-spike; baro-freeze; data-gap; pad-knock; long-pad; weak-motor; accel-clip; crosswind; reboot-coast; reboot-ejection
+B07-main-sign,174,curated,Main fires above its altitude instead of below,killed,serious,nominal; noisy-baro; pressure-dip; ejection-spike; baro-freeze; data-gap; pad-knock; long-pad; weak-motor; accel-clip; cato; crosswind; reboot-coast; reboot-ejection
+B08-naive-apogee,164,curated,Apogee is the first sample the filtered velocity goes negative,killed,minor,noisy-baro
+B09-default-accel-range,87,curated,Accelerometer left at its 2 g power-on range: the launch push is clipped,killed,critical,nominal; noisy-baro; pressure-dip; ejection-spike; baro-freeze; data-gap; pad-knock; long-pad; weak-motor; accel-clip; cato; crosswind; reboot-coast; reboot-ejection
+B10-wrong-axis,146,curated,Uses the X axis as up,killed,critical,nominal; noisy-baro; pressure-dip; ejection-spike; baro-freeze; data-gap; pad-knock; long-pad; weak-motor; accel-clip; cato; crosswind; reboot-coast; reboot-ejection
+B11-no-launch-confirm,154,curated,"Launch on one accelerometer sample over 2.5 g, with no check that it climbs",survived,none,
+B12-forgets-flight,93,curated,Doesn't restore its state after a restart,killed,critical,reboot-coast; reboot-ejection
+B13-no-outlier-gate,135,curated,No rejection of sudden barometer jumps,killed,minor,pressure-dip
+B14-ground-from-first-sample,124,curated,"Ground pressure from the first reading only, so pad drift becomes false altitude",survived,none,
+B15-no-baro-check,120,curated,"performReading()'s result is ignored; the library keeps the last reading, so a failed read looks like a frozen barometer",survived,none,
+B16-fires-on-boot,77,curated,Pyro pins set to OUTPUT before they are driven LOW (and left HIGH by a test write),killed,critical,nominal; noisy-baro; pressure-dip; ejection-spike; baro-freeze; data-gap; pad-knock; long-pad; weak-motor; accel-clip; cato; crosswind; reboot-coast; disarmed; reboot-ejection
+B17-timer-only-main,174,curated,Main fires on a timer after apogee instead of by altitude,killed,serious,nominal; noisy-baro; pressure-dip; ejection-spike; baro-freeze; data-gap; pad-knock; long-pad; weak-motor; accel-clip; cato; crosswind; reboot-coast; reboot-ejection
+B18-drogue-at-burnout,158,curated,Drogue fires as soon as the motor burns out,killed,serious,nominal; noisy-baro; pressure-dip; ejection-spike; baro-freeze; data-gap; pad-knock; long-pad; weak-motor; accel-clip; cato; crosswind; reboot-coast; reboot-ejection

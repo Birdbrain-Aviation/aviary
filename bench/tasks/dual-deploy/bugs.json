@@ -1,0 +1,20 @@
+[
+  { "id": "B01-no-arm-check", "desc": "The arm switch is read but never checked before firing", "find": "  if (!armed()) { Serial.println(F(\"Not armed: channel held\")); return; }\n", "replace": "" },
+  { "id": "B02-no-pinmode", "desc": "Pyro pins never set to OUTPUT", "find": "pinMode(PYRO[i], OUTPUT); ", "replace": "" },
+  { "id": "B03-pulse-never-ends", "desc": "Channels are switched on but never off", "find": "{ digitalWrite(PYRO[i], LOW); offAt[i] = 0; }", "replace": "{ offAt[i] = 0; }" },
+  { "id": "B04-pulse-too-short", "desc": "A 5 ms pulse, too short for an e-match", "find": "const uint32_t PULSE_MS = 1000;", "replace": "const uint32_t PULSE_MS = 5;" },
+  { "id": "B05-refires", "desc": "fire() doesn't remember what already fired, so it fires again every pass", "find": "  if (fired & (1 << ch)) return;\n", "replace": "" },
+  { "id": "B06-main-in-feet", "desc": "Main altitude written in feet where metres are meant", "find": "const float MAIN_ALT_M = 152.4;", "replace": "const float MAIN_ALT_M = 500;" },
+  { "id": "B07-main-sign", "desc": "Main fires above its altitude instead of below", "find": "if (alt < MAIN_ALT_M && vel < 0", "replace": "if (alt > MAIN_ALT_M && vel < 0" },
+  { "id": "B08-naive-apogee", "desc": "Apogee is the first sample the filtered velocity goes negative", "find": "if (now - launchMs > 3000 && (belowN >= 30 || (maxAlt - alt > 10 && vel < 0))) {", "replace": "if (vel < 0) {" },
+  { "id": "B09-default-accel-range", "desc": "Accelerometer left at its 2 g power-on range: the launch push is clipped", "find": "  mpu.setAccelerometerRange(MPU6050_RANGE_16_G);\n", "replace": "" },
+  { "id": "B10-wrong-axis", "desc": "Uses the X axis as up", "find": "float accUp = a.acceleration.z;", "replace": "float accUp = a.acceleration.x;" },
+  { "id": "B11-no-launch-confirm", "desc": "Launch on one accelerometer sample over 2.5 g, with no check that it climbs", "find": "if (alt - candAlt > 5 && vel > 10)", "replace": "if (true)" },
+  { "id": "B12-forgets-flight", "desc": "Doesn't restore its state after a restart", "find": "  if (saved.magic == MAGIC && saved.phase != PAD && saved.phase != LANDED) {", "replace": "  if (false) {" },
+  { "id": "B13-no-outlier-gate", "desc": "No rejection of sudden barometer jumps", "find": "    if (fabs(r) > 20) { if (++rejectN < 100) r = 0; else { alt = h; rejectN = 0; r = 0; pred = h; } }\n    else rejectN = 0;\n", "replace": "" },
+  { "id": "B14-ground-from-first-sample", "desc": "Ground pressure from the first reading only, so pad drift becomes false altitude", "find": "p0 = (p0 == 0) ? bmp.pressure : p0 + (bmp.pressure - p0) * k;", "replace": "if (p0 == 0) p0 = bmp.pressure;" },
+  { "id": "B15-no-baro-check", "desc": "performReading()'s result is ignored; the library keeps the last reading, so a failed read looks like a frozen barometer", "find": "bool baroOk = bmp.performReading();", "replace": "bmp.performReading(); bool baroOk = true;" },
+  { "id": "B16-fires-on-boot", "desc": "Pyro pins set to OUTPUT before they are driven LOW (and left HIGH by a test write)", "find": "for (uint8_t i = 0; i < 2; i++) { digitalWrite(PYRO[i], LOW); pinMode(PYRO[i], OUTPUT); }", "replace": "for (uint8_t i = 0; i < 2; i++) { pinMode(PYRO[i], OUTPUT); digitalWrite(PYRO[i], HIGH); delay(10); digitalWrite(PYRO[i], LOW); }" },
+  { "id": "B17-timer-only-main", "desc": "Main fires on a timer after apogee instead of by altitude", "find": "if (alt < MAIN_ALT_M && vel < 0 && now - apogeeMs > 2000)", "replace": "if (now - apogeeMs > 8000)" },
+  { "id": "B18-drogue-at-burnout", "desc": "Drogue fires as soon as the motor burns out", "find": "    case BOOST:\n      if (accUp < 0.5 * G && now - launchMs > 300) setPhase(COAST);", "replace": "    case BOOST:\n      if (accUp < 0.5 * G && now - launchMs > 300) { setPhase(COAST); fire(0); }" }
+]

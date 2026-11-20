@@ -164,7 +164,7 @@ export function defaultPyro(rocket) {
 
 export const DEFAULT_TOL = { apogeeEarly: 1.0, apogeeLate: 2.0, altitudeFrac: 0.1, altitudeMin: 15, timer: 0.5, igniteEarly: 0.3, igniteLate: 0.7, safeLanding: 7.6,
   backupLate: 3.0, backupAltFrac: 0.5, gradeEstimates: true, estAlt: 10, estAltFrac: 0.05, estVel: 6, estVelFrac: 0.08, restartBack: 5,
-  tiltMargin: 3, targetFrac: 0.02, targetMin: 3 };
+  tiltMargin: 3, targetFrac: 0.02, targetMin: 3, maxDeploySpeed: 50 };
 
 // The tilt limit for lighting an upper stage, in degrees from vertical.
 export const DEFAULT_TILT_LIMIT = 20;
@@ -554,7 +554,9 @@ export class HILRun {
     }
     const applied = dud ? false : this.sim.command({ ...action, source: "flight computer" });
     const name = action.type === "deploy" ? (this.rocket.recovery.find((d) => d.id === action.id)?.name || action.id) + " deploy" : action.type === "ignite" ? `${this.rocket.stages[action.stage]?.name || "Stage " + action.stage} ignition` : `${this.rocket.stages[action.stage]?.name || "Stage"} separation`;
-    const rec = { t, key, label: name, applied, ch, source: why, h: this.sim.h, v: this.sim.v, ...(dud ? { dud: true } : {}), ...(timing || {}) };
+    const w = this.sim.windAt ? this.sim.windAt() : [0, 0, 0];
+    const speed = Math.hypot((this.sim.vx || 0) - w[0], (this.sim.vy || 0) - w[1], this.sim.v || 0);
+    const rec = { t, key, label: name, applied, ch, source: why, h: this.sim.h, v: this.sim.v, speed, ...(dud ? { dud: true } : {}), ...(timing || {}) };
     this.actions.push(rec);
     this.onEvent({ type: "action", t, label: dud ? `${name} (${why}): the charge didn't go off` : `${name} (${why})`, applied, bad: dud || undefined, h: this.sim.h, v: this.sim.v });
     return { kind: "action", rec };
@@ -682,6 +684,14 @@ export class HILRun {
     }
     const unexpected = this.actions.filter((a) => !this.expectations.some((e) => e.key === a.key));
     for (const u of unexpected) checks.push({ label: u.label, ok: false, expected: "not expected", actual: `T+${(u.t - L).toFixed(2)} s`, detail: "The flight computer did something the plan doesn't include." });
+
+    // safety: nothing fires on the pad, and nothing opens at a speed that would tear it
+    for (const a of this.actions.filter((x) => s.liftoff === null || x.t < s.liftoff)) {
+      checks.push({ label: "On the pad", ok: false, expected: "nothing fired before liftoff", actual: `${a.label}${s.liftoff !== null ? ` ${(s.liftoff - a.t).toFixed(1)} s before liftoff` : " (it never launched)"}`, detail: "Firing on the pad can hurt the people standing next to the rocket.", severity: "critical" });
+    }
+    for (const a of this.actions.filter((x) => x.applied && x.key.startsWith("deploy:") && x.speed > tol.maxDeploySpeed && (s.liftoff === null || x.t >= s.liftoff))) {
+      checks.push({ label: "Opening speed", ok: false, expected: `under ${fmtVel(tol.maxDeploySpeed)}`, actual: `${a.label} at ${fmtVel(a.speed)}`, detail: "A parachute opening this fast can zipper the airframe, strip the shock cord or shred the canopy.", severity: "serious" });
+    }
 
     // restarts
     const scale = Math.max(1, this.cfg.timeScale || 1);
@@ -820,6 +830,15 @@ export class HILRun {
     checks.push(early
       ? { label: "Airbrakes under power", ok: false, expected: "closed while a motor burns", actual: `${pct(early.b)} open at ${Tlab(early.t)}`, detail: "Opening the brakes during boost wastes the motor and loads them hard. Wait for burnout." }
       : { label: "Airbrakes under power", ok: true, expected: "closed while a motor burns", actual: "closed", detail: "" });
+    // shut when a parachute comes out, so the shock cord can't catch on them
+    const chuteOut = this.actions.filter((a) => a.applied && a.key.startsWith("deploy:"));
+    if (chuteOut.length && maxAll > 0.05) {
+      const at = (x) => { let i = T.t.findIndex((tt) => tt >= x); if (i < 0) i = T.t.length - 1; return T.brake[i] || 0; };
+      const open = chuteOut.map((a) => ({ a, b: at(a.t) })).find((o) => o.b > 0.05);
+      checks.push(open
+        ? { label: "Airbrakes shut for recovery", ok: false, expected: "shut before a parachute comes out", actual: `${pct(open.b)} open at ${open.a.label.toLowerCase()} (${Tlab(open.a.t)})`, detail: "Open airbrakes can snag the shock cord or the parachute. Shut them at apogee.", severity: "serious" }
+        : { label: "Airbrakes shut for recovery", ok: true, expected: "shut before a parachute comes out", actual: "shut", detail: "" });
+    }
     const sent = Object.keys(this.fcAct).length > 0;
     const target = Number(this.rocket.targetApogee) || 0;
     const jammed = this.faults.some((f) => f.type === "brake_stuck");

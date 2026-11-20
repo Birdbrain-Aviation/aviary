@@ -1,0 +1,74 @@
+[
+ {
+  "id": "S01-no-tilt-check",
+  "desc": "Lights the sustainer without checking the tilt",
+  "find": "else if (tiltDeg > MAX_TILT_DEG) {",
+  "replace": "else if (false) {"
+ },
+ {
+  "id": "S02-tilt-in-radians",
+  "desc": "Compares a tilt in radians with a limit in degrees",
+  "find": "  return acos(constrain(c, -1.0, 1.0)) * 57.29578;",
+  "replace": "  return acos(constrain(c, -1.0, 1.0));"
+ },
+ {
+  "id": "S03-tilt-from-body-z",
+  "desc": "Measures tilt from the board's Z axis instead of the gravity seen on the pad (a leaning rail goes unnoticed)",
+  "find": "  float c = nx * upX + ny * upY + nz * upZ;",
+  "replace": "  float c = nz;"
+ },
+ {
+  "id": "S04-no-speed-check",
+  "desc": "Lights the sustainer however slow the rocket is going",
+  "find": "else if (vel < MIN_LIGHT_VEL)",
+  "replace": "else if (false)"
+ },
+ {
+  "id": "S05-light-at-burnout",
+  "desc": "Lights the sustainer the moment the booster burns out",
+  "find": "if (now - burnoutMs >= IGNITE_DELAY_MS) {",
+  "replace": "if (true) {"
+ },
+ {
+  "id": "S06-light-late",
+  "desc": "Waits 3 s after burnout instead of 1 s",
+  "find": "const uint32_t IGNITE_DELAY_MS = 1000;",
+  "replace": "const uint32_t IGNITE_DELAY_MS = 3000;"
+ },
+ {
+  "id": "S07-relight-after-restart",
+  "desc": "After a restart before staging, goes back to staging (and lights with no attitude reference)",
+  "find": "    if (phase == BOOST || phase == STAGING) { phase = COAST; save(); Serial.println(F(\"Restarted before staging: sustainer held\")); }\n",
+  "replace": "    attitudeOk = true;\n"
+ },
+ {
+  "id": "S08-no-gyro-bias",
+  "desc": "Gyro bias not removed before integrating",
+  "find": "    integrateGyro(g.gyro.x - biasX, g.gyro.y - biasY, g.gyro.z - biasZ, dt);",
+  "replace": "    integrateGyro(g.gyro.x, g.gyro.y, g.gyro.z, dt);"
+ },
+ {
+  "id": "S09-gyro-default-range",
+  "desc": "Gyro left at its 250 °/s power-on range",
+  "find": "  mpu.setGyroRange(MPU6050_RANGE_2000_DEG);\n",
+  "replace": ""
+ },
+ {
+  "id": "S10-igniter-not-armed",
+  "desc": "The igniter channel skips the arm check",
+  "find": "  if (!armed()) { Serial.println(F(\"Not armed: channel held\")); return; }",
+  "replace": "  if (!armed() && ch != 2) { Serial.println(F(\"Not armed: channel held\")); return; }"
+ },
+ {
+  "id": "S11-igniter-pin-not-output",
+  "desc": "Only the two recovery pins are set as outputs",
+  "find": "for (uint8_t i = 0; i < 3; i++) { digitalWrite(PYRO[i], LOW); pinMode(PYRO[i], OUTPUT); }",
+  "replace": "for (uint8_t i = 0; i < 2; i++) { digitalWrite(PYRO[i], LOW); pinMode(PYRO[i], OUTPUT); }"
+ },
+ {
+  "id": "S12-tight-apogee",
+  "desc": "Apogee on 3 falling samples or 2 m below the peak, with no time guard",
+  "find": "if (now - launchMs > 3000 && (belowN >= 30 || (maxAlt - alt > 10 && vel < 0))) {",
+  "replace": "if (belowN >= 3 || maxAlt - alt > 2) {"
+ }
+]

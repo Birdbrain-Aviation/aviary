@@ -1,0 +1,12 @@
+id,line,operator,description,status,worst,caught_by
+A01-attach-before-write,97,curated,"Servo attached before it is told where to go, so the brakes open to 90° on the pad",killed,serious,nominal; noisy-baro; pressure-dip; ejection-spike; baro-freeze; data-gap; pad-knock; long-pad; weak-motor; accel-clip; cato; crosswind; strong-motor; reboot-coast; reboot-ejection
+A02-brakes-during-boost,179,curated,"Steers from launch, including while the motor burns",killed,serious,nominal; noisy-baro; pressure-dip; ejection-spike; baro-freeze; data-gap; pad-knock; long-pad; weak-motor; accel-clip; cato; crosswind; strong-motor; reboot-coast; reboot-ejection
+A03-never-shut,190,curated,"Only the steering law moves the brakes: nothing shuts them near apogee, at apogee or for the parachutes",survived,none,
+A05-brakes-backwards,29,curated,Servo direction reversed (90° taken as shut),killed,serious,nominal; noisy-baro; pressure-dip; ejection-spike; baro-freeze; data-gap; pad-knock; long-pad; weak-motor; accel-clip; cato; crosswind; strong-motor; reboot-coast; reboot-ejection
+A06-target-in-feet,25,curated,Target written in feet where metres are meant,killed,minor,nominal; noisy-baro; pressure-dip; ejection-spike; baro-freeze; data-gap; pad-knock; long-pad; accel-clip; strong-motor; reboot-coast; reboot-ejection
+A07-wrong-brake-area,28,curated,"Brake area in cm² used as m² (×10000 too big), so the brakes barely open",killed,minor,strong-motor
+A08-bang-bang,189,curated,Brakes fully open whenever the shut-brake prediction is over the target,killed,minor,nominal; noisy-baro; pressure-dip; ejection-spike; baro-freeze; data-gap; pad-knock; long-pad; accel-clip; strong-motor; reboot-coast; reboot-ejection
+A09-baro-only-speed,151,curated,Speed from the barometer alone (the accelerometer isn't used),killed,minor,noisy-baro; crosswind
+A10-no-gravity-removed,151,curated,Accelerometer used without removing gravity,survived,none,
+A11-steer-from-burnout,186,curated,"Starts steering at the first sample after burnout, before the motor has tailed off",survived,none,
+A12-no-arm-check,74,curated,The arm switch is never checked before firing,killed,critical,disarmed

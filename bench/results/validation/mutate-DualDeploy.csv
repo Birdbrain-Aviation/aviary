@@ -1,0 +1,121 @@
+id,line,operator,description,status,worst,caught_by
+M001,14,const,5 doubled (10),killed,serious,nominal; noisy-baro
+M002,15,const,6 halved (3),killed,serious,nominal; noisy-baro
+M003,16,const,7 halved (4),killed,critical,nominal; noisy-baro
+M004,17,const,152.4 halved (76.2),killed,minor,nominal; noisy-baro
+M005,19,const,1000 halved (500),survived,none,
+M006,20,const,10 doubled (20),survived,none,
+M007,40,const,0 0 → 1 (1),survived,none,
+M008,40,const,15 doubled (30),survived,none,
+M009,41,const,0 0 → 1 (1),survived,none,
+M010,41,const,0 0 → 1 (1),survived,none,
+M011,43,const,0 0 → 1 (1),survived,none,
+M012,44,const,0 0 → 1 (1),survived,none,
+M013,44,const,0 0 → 1 (1),survived,none,
+M014,44,const,0 0 → 1 (1),survived,none,
+M015,46,const,0 0 → 1 (1),survived,none,
+M016,47,const,0 0 → 1 (1),survived,none,
+M017,60,delete,deleted: phase = p;,killed,critical,nominal; noisy-baro
+M018,68,logic,! removed,killed,critical,nominal; noisy-baro
+M019,71,delete,deleted: offAt[ch] = millis() + PULSE_MS;,killed,serious,nominal; noisy-baro
+M020,71,arith,+ → -,killed,serious,nominal; noisy-baro
+M021,77,rel,< → >,killed,critical,nominal; noisy-baro
+M022,81,delete,"deleted: if (!bmp.begin_I2C()) Serial.println(F(""No BMP390""));",killed,critical,nominal; noisy-baro
+M023,81,logic,! removed,survived,none,
+M024,86,delete,"deleted: if (!mpu.begin()) Serial.println(F(""No MPU6050""));",killed,critical,nominal; noisy-baro
+M025,86,logic,! removed,survived,none,
+M026,88,delete,deleted: mpu.setGyroRange(MPU6050_RANGE_2000_DEG);,survived,none,
+M027,93,logic,&& → ||,killed,critical,nominal; noisy-baro
+M028,93,rel,!= → ==,killed,critical,reboot-coast
+M029,93,logic,&& → ||,killed,critical,nominal; noisy-baro
+M030,93,rel,!= → ==,killed,critical,reboot-coast
+M031,95,delete,deleted: fired = saved.fired;,survived,none,
+M032,101,arith,- → +,survived,none,
+M033,103,delete,deleted: filterSeeded = false;,survived,none,
+M034,103,logic,false → true,survived,none,
+M035,114,logic,&& → ||,killed,serious,nominal; noisy-baro
+M036,114,rel,>= → <,killed,serious,nominal; noisy-baro
+M037,114,delete,deleted: offAt[i] = 0;,survived,none,
+M038,115,arith,- → +,killed,minor,pressure-dip
+M039,115,rel,< → >,killed,minor,pressure-dip
+M040,116,arith,- → +,killed,critical,nominal; noisy-baro
+M041,116,arith,/ → *,killed,critical,nominal; noisy-baro
+M042,121,logic,&& → ||,killed,serious,nominal; noisy-baro
+M043,121,rel,== → !=,killed,critical,nominal; noisy-baro
+M044,124,arith,+ → -,killed,critical,nominal; noisy-baro
+M045,124,arith,* → /,killed,serious,nominal; noisy-baro
+M046,125,delete,deleted: tPad = tPad + (bmp.temperature - tPad) * k;,survived,none,
+M047,125,arith,- → +,killed,critical,nominal; noisy-baro
+M048,128,delete,deleted: lastGoodBaro = now;,survived,none,
+M049,129,arith,* → /,killed,critical,nominal; noisy-baro
+M050,129,const,1.0 doubled (2.0),killed,serious,nominal; noisy-baro
+M051,129,const,1.0 halved (0.5),killed,minor,nominal; noisy-baro
+M052,129,arith,/ → *,killed,critical,nominal; noisy-baro
+M053,130,logic,! removed,survived,none,
+M054,130,delete,deleted: alt = h;,survived,none,
+M055,130,delete,deleted: vel = 0;,survived,none,
+M056,130,delete,deleted: filterSeeded = true;,killed,critical,nominal; noisy-baro
+M057,130,logic,true → false,killed,critical,nominal; noisy-baro
+M058,133,arith,+ → -,killed,critical,nominal; noisy-baro
+M059,133,arith,* → /,killed,critical,nominal; noisy-baro
+M060,134,arith,- → +,killed,critical,nominal; noisy-baro
+M061,135,rel,> → <,killed,minor,nominal; noisy-baro
+M062,135,rel,> → >=,survived,none,
+M063,135,const,20 halved (10),survived,none,
+M064,135,const,0 0 → 1 (1),survived,none,
+M065,135,delete,deleted: rejectN = 0;,survived,none,
+M066,135,delete,deleted: r = 0;,survived,none,
+M067,137,const,0.15 halved (0.075),survived,none,
+M068,140,delete,deleted: alt += vel * dt;,survived,none,
+M069,140,arith,+= → -=,survived,none,
+M070,142,rel,> → >=,survived,none,
+M071,142,rel,> → <,survived,none,
+M072,142,rel,!= → ==,survived,none,
+M073,151,delete,deleted: boostN = (accUp > 2.5 * G) ? boostN + 1 : 0;,killed,critical,nominal; noisy-baro
+M074,151,rel,> → <,killed,minor,long-pad
+M075,151,const,2.5 doubled (5.0),survived,none,
+M076,151,arith,* → /,survived,none,
+M077,151,arith,+ → -,survived,none,
+M078,152,logic,! removed,killed,critical,nominal; noisy-baro
+M079,152,logic,&& → ||,killed,minor,nominal; noisy-baro
+M080,152,rel,>= → <,killed,minor,long-pad
+M081,152,logic,true → false,killed,critical,nominal; noisy-baro
+M082,154,arith,- → +,survived,none,
+M083,154,rel,> → <,survived,none,
+M084,154,rel,> → >=,survived,none,
+M085,154,logic,&& → ||,survived,none,
+M086,154,rel,> → >=,survived,none,
+M087,154,const,10 doubled (20),survived,none,
+M088,154,delete,deleted: setPhase(BOOST);,killed,critical,nominal; noisy-baro
+M089,155,delete,deleted: else if (now - candMs > 1500) cand = false;,survived,none,
+M090,155,arith,- → +,killed,critical,nominal; noisy-baro
+M091,155,rel,> → <,killed,critical,nominal; noisy-baro
+M092,155,rel,> → >=,survived,none,
+M093,155,logic,false → true,survived,none,
+M094,159,delete,deleted: if (accUp < 0.5 * G && now - launchMs > 300) setPhase(COAST);,killed,critical,nominal; noisy-baro
+M095,159,rel,< → <=,survived,none,
+M096,159,arith,* → /,survived,none,
+M097,159,logic,&& → ||,survived,none,
+M098,163,arith,+ → -,killed,minor,noisy-baro
+M099,164,logic,&& → ||,killed,serious,nominal; noisy-baro
+M100,164,logic,|| → &&,killed,minor,baro-freeze
+M101,164,arith,- → +,killed,minor,noisy-baro
+M102,164,logic,&& → ||,killed,minor,noisy-baro
+M103,164,rel,< → >,survived,none,
+M104,164,rel,< → <=,survived,none,
+M105,165,delete,deleted: apogeeMs = now;,killed,minor,baro-freeze
+M106,166,delete,deleted: setPhase(DESCENT);,killed,critical,nominal; noisy-baro
+M107,170,const,2000 doubled (4000),survived,none,
+M108,170,logic,&& → ||,survived,none,
+M109,173,arith,- → +,killed,minor,baro-freeze
+M110,174,rel,< → >,killed,minor,nominal; noisy-baro
+M111,174,logic,&& → ||,killed,minor,nominal; noisy-baro
+M112,174,rel,> → >=,survived,none,
+M113,177,delete,deleted: if (!(fired & 1) && now - apogeeMs >= DROGUE_DELAY_MS) fire(0);,survived,none,
+M114,177,logic,! removed,survived,none,
+M115,177,arith,- → +,survived,none,
+M116,178,rel,< → <=,survived,none,
+M117,178,logic,&& → ||,survived,none,
+M118,179,logic,! removed,survived,none,
+M119,180,arith,- → +,survived,none,
+M120,181,delete,deleted: else landMs = 0;,survived,none,

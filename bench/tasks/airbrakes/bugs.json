@@ -1,0 +1,80 @@
+[
+ {
+  "id": "A01-attach-before-write",
+  "desc": "Servo attached before it is told where to go, so the brakes open to 90° on the pad",
+  "find": "  brake.write((int)SERVO_SHUT);           // before attach, so it starts shut\n  brake.attach(PIN_SERVO);",
+  "replace": "  brake.attach(PIN_SERVO);"
+ },
+ {
+  "id": "A02-brakes-during-boost",
+  "desc": "Steers from launch, including while the motor burns",
+  "find": "    case BOOST:\n      setBrake(0);\n",
+  "replace": "    case BOOST:\n      setBrake(1);\n"
+ },
+ {
+  "id": "A03-never-shut",
+  "desc": "Only the steering law moves the brakes: nothing shuts them near apogee, at apogee or for the parachutes",
+  "edits": [
+   {
+    "find": "      } else if (vel <= BRAKE_MIN_VEL) setBrake(0);",
+    "replace": "      }"
+   },
+   {
+    "find": "      if (now - launchMs > 3000 && (belowN >= 30 || (maxAlt - alt > 10 && vel < 0))) {\n        setBrake(0);\n",
+    "replace": "      if (now - launchMs > 3000 && (belowN >= 30 || (maxAlt - alt > 10 && vel < 0))) {\n"
+   },
+   {
+    "find": "    case DESCENT:\n      setBrake(0);\n",
+    "replace": "    case DESCENT:\n"
+   }
+  ]
+ },
+ {
+  "id": "A05-brakes-backwards",
+  "desc": "Servo direction reversed (90° taken as shut)",
+  "find": "const float SERVO_SHUT = 0, SERVO_OPEN = 90;",
+  "replace": "const float SERVO_SHUT = 90, SERVO_OPEN = 0;"
+ },
+ {
+  "id": "A06-target-in-feet",
+  "desc": "Target written in feet where metres are meant",
+  "find": "const float TARGET_M = 518.2;",
+  "replace": "const float TARGET_M = 1700;"
+ },
+ {
+  "id": "A07-wrong-brake-area",
+  "desc": "Brake area in cm² used as m² (×10000 too big), so the brakes barely open",
+  "find": "const float CDA_BRAKE = 1.2 * 0.0040;",
+  "replace": "const float CDA_BRAKE = 1.2 * 40;"
+ },
+ {
+  "id": "A08-bang-bang",
+  "desc": "Brakes fully open whenever the shut-brake prediction is over the target",
+  "find": "        setBrake(shut - open > 1 ? (shut - TARGET_M) / (shut - open) : 0);",
+  "replace": "        setBrake(shut > TARGET_M ? 1 : 0);"
+ },
+ {
+  "id": "A09-baro-only-speed",
+  "desc": "Speed from the barometer alone (the accelerometer isn't used)",
+  "find": "  float acc = flying ? (accUp - accPad) : 0;",
+  "replace": "  float acc = 0;"
+ },
+ {
+  "id": "A10-no-gravity-removed",
+  "desc": "Accelerometer used without removing gravity",
+  "find": "  float acc = flying ? (accUp - accPad) : 0;",
+  "replace": "  float acc = flying ? accUp : 0;"
+ },
+ {
+  "id": "A11-steer-from-burnout",
+  "desc": "Starts steering at the first sample after burnout, before the motor has tailed off",
+  "find": "      else if (now - burnoutMs > 200 && accUp < 0 && vel > BRAKE_MIN_VEL) {",
+  "replace": "      else if (vel > BRAKE_MIN_VEL) {"
+ },
+ {
+  "id": "A12-no-arm-check",
+  "desc": "The arm switch is never checked before firing",
+  "find": "  if (!armed()) { Serial.println(F(\"Not armed: channel held\")); return; }\n",
+  "replace": ""
+ }
+]

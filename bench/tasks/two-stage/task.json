@@ -1,0 +1,19 @@
+{
+  "id": "two-stage",
+  "title": "Two-stage flight computer with tilt lockout",
+  "rocket": "example-two-stage",
+  "site": { "name": "Test field", "elevation": 120, "tempC": 20, "windSpeed": 3, "windDir": 270, "railLength": 1.5, "lat": 37.3, "lon": -89.5 },
+  "rate": 100,
+  "hardware": {
+    "baro": "BMP390",
+    "imu": { "part": "MPU6050", "up": "z", "sign": 1 },
+    "pyro": [
+      { "pin": 5, "name": "Drogue", "action": { "type": "deploy", "id": "drogue" } },
+      { "pin": 6, "name": "Main", "action": { "type": "deploy", "id": "main" } },
+      { "pin": 8, "name": "Sustainer igniter", "action": { "type": "ignite", "stage": 1 } }
+    ],
+    "arm": { "pin": 7, "armedLevel": 0 },
+    "servo": null
+  },
+  "benchTests": ["disarmed", "reboot-ejection", "reboot-separation-tilted"]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "airbrakes",
+  "title": "Dual deploy with airbrakes to a target apogee",
+  "rocket": "example-airbrakes",
+  "site": { "name": "Test field", "elevation": 120, "tempC": 20, "windSpeed": 3, "windDir": 270, "railLength": 1.5, "lat": 37.3, "lon": -89.5 },
+  "rate": 100,
+  "hardware": {
+    "baro": "BMP390",
+    "imu": { "part": "MPU6050", "up": "z", "sign": 1 },
+    "pyro": [
+      { "pin": 5, "name": "Drogue", "action": { "type": "deploy", "id": "drogue" } },
+      { "pin": 6, "name": "Main", "action": { "type": "deploy", "id": "main" } }
+    ],
+    "arm": { "pin": 7, "armedLevel": 0 },
+    "servo": { "pin": 9, "closed": 0, "open": 90 }
+  },
+  "benchTests": ["disarmed", "reboot-ejection"]
+}

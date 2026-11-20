@@ -44,7 +44,7 @@ If you hit a false positive, you can report it to Microsoft at [microsoft.com/wd
 
 ![Mockingbird after a passing test](docs/screenshots/mockingbird.png)
 
-Mockingbird runs a flight computer through a set of test flights: a normal flight, a noisy barometer, a pressure spike from an ejection charge, data dropping out near apogee, a weak motor, a charge that doesn't go off, the board restarting mid-flight, a gusty crosswind, a tilted launch, and more. The simulated rocket can tilt: the rail can lean and the wind turns it, and the sensors read in the board's own axes. Each test grades every deployment and ignition (including holding an upper stage that's past its tilt limit), scores the board's own altitude and speed estimates against the simulation's truth, and for a rocket with airbrakes, grades apogee against a target as the board opens and closes them. You can write your own tests, run a Monte Carlo batch, replay a real flight log from Heron, and print a one-page report of a test or a whole set. There's a built-in virtual flight computer so you can try it without hardware.
+Mockingbird runs a flight computer through a set of test flights: a normal flight, a noisy barometer, a pressure spike from an ejection charge, data dropping out near apogee, a weak motor, a charge that doesn't go off, the board restarting mid-flight, a gusty crosswind, a tilted launch, and more. The simulated rocket can tilt: the rail can lean and the wind turns it, and the sensors read in the board's own axes. Each test grades every deployment and ignition (including holding an upper stage that's past its tilt limit), scores the board's own altitude and speed estimates against the simulation's truth, and for a rocket with airbrakes, grades apogee against a target as the board opens and closes them, and checks they are shut under power and when a parachute comes out. You can write your own tests, run a Monte Carlo batch, replay a real flight log from Heron, and print a one-page report of a test or a whole set. There's a built-in virtual flight computer so you can try it without hardware.
 
 To test your own board, add the [MockingbirdHIL](arduino/MockingbirdHIL) library to your flight computer code. It feeds the board simulated barometer, accelerometer, gyro and GPS readings and reports pyro outputs and state changes back to Mockingbird. The library has two examples: a minimal one to try first and one showing how to drop it into existing flight code.
 
@@ -60,13 +60,17 @@ Owl can also put its readouts on your phone. Press **Phone** in Owl and the lapt
 
 Heron gives you apogee, top speed, burnout, descent rates and landing speed at a glance, flags sensor problems, and lets you compare several flights side by side. It reads Owl recordings and Mockingbird runs directly, and can turn a real log into a Mockingbird replay so you can re-fly it against new code.
 
+## Research bench
+
+[`bench/`](bench) asks a research question: *can LLMs write effective, safe flight-computer code for model rockets?* It compiles an ordinary Arduino sketch (real Adafruit library calls, `digitalWrite` on the pyro pins, `Servo`, `EEPROM`) for a virtual board on your PC, flies it through Mockingbird's tests in lockstep with the simulator, and grades effectiveness and safety separately, with every failure rated critical, serious or minor. It has three task tiers (dual deploy, two stages with a tilt lockout, airbrakes to a target apogee), each with a plain prompt and a safety-requirements prompt for the models, a reference firmware that passes every test, and hand-planted bugs plus automatic mutation testing that show how much a pass is worth. `node bench/bench.mjs batch <folder> --task dual-deploy --out results/` grades a folder of sketches into JSON and CSV. See [bench/README.md](bench/README.md).
+
 ## How the code fits together
 
 - `cmd/owl`, `cmd/heron`, `cmd/mockingbird`: one small Go program per app. Each serves its interface on `127.0.0.1` (ports 47710, 47720 and 47730, fixed so Edge remembers serial-port permissions) and opens it in an Edge app window. It also stores settings and files, relays UDP telemetry for Owl, and caches map tiles. The app quits when its window closes.
 - `host/`: that shared Go code. `host_windows.go` finds the Documents folder (OneDrive-aware) and Edge or Chrome.
   - `host/companion.go`: Owl's phone companion server: HTTPS with a local certificate authority it makes once, a pairing key, and read-only live data. `firewall_windows.go` adds the Windows Firewall rule for it.
 - `web/`: the interfaces (plain HTML, CSS and JavaScript modules, no build step), embedded into each program.
-  - `web/shared/js/sim.js`: the 1-D flight simulator (stages, clusters, recovery, ISA atmosphere, wind drift, sensor models).
+  - `web/shared/js/sim.js`: the flight simulator (tilting ascent with weathercocking, wind and gusts, stages, clusters, recovery, airbrakes, ISA atmosphere, sensor models).
   - `web/shared/js/hil.js`: Mockingbird's engine: the wire protocol, fault injection, closed-loop pyro handling, grading, and the virtual flight computer.
   - `web/shared/js/analysis.js`, `flightlog.js`: Heron's log reader and flight analysis.
   - `web/shared/js/health.js`, `replay.js`: Heron's sensor health checks, and turning a log into a Mockingbird replay.
@@ -75,6 +79,7 @@ Heron gives you apogee, top speed, burnout, descent rates and landing speed at a
   - `web/shared/js/flight3d.js`, `flightviz.js`: the 2D and 3D flight animation (WebGL terrain from cached elevation tiles, no libraries).
   - `web/shared/js/serial.js`: Web Serial (Edge and Chrome).
 - `arduino/MockingbirdHIL`: the Arduino library for flight computers.
+- `bench/`: the research bench: a virtual Arduino board with stand-in sensor libraries, the command-line runner, task specs and prompts, reference firmware, and planted-bug testing.
 - `tools/winres`: writes the Windows icon, version and manifest resources (standard library only).
 
 ## Building from source
@@ -94,7 +99,7 @@ For development, `go run ./cmd/owl` opens the app in your browser. The interface
 
 ```sh
 ./build-native-tests.sh     # compiles the Arduino examples to run on this PC
-node --test tests/*.test.js # simulator, analysis, protocol, grading, QR, and the library end to end
+node --test tests/*.test.js # simulator, analysis, protocol, grading, QR, the library end to end, and the research bench (needs g++)
 tests/restart.sh            # starts all three apps without windows for the browser tests
 python3 tests/ui_mockingbird.py && python3 tests/ui_mockingbird_serial.py && python3 tests/ui_owl.py && python3 tests/ui_heron.py
 ```

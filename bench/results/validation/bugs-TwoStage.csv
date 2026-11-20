@@ -1,0 +1,13 @@
+id,line,operator,description,status,worst,caught_by
+S01-no-tilt-check,194,curated,Lights the sustainer without checking the tilt,killed,critical,crosswind; tilted-launch
+S02-tilt-in-radians,92,curated,Compares a tilt in radians with a limit in degrees,killed,critical,crosswind; tilted-launch
+S03-tilt-from-body-z,91,curated,Measures tilt from the board's Z axis instead of the gravity seen on the pad (a leaning rail goes unnoticed),killed,critical,tilted-launch
+S04-no-speed-check,195,curated,Lights the sustainer however slow the rocket is going,survived,none,
+S05-light-at-burnout,192,curated,Lights the sustainer the moment the booster burns out,killed,critical,nominal; noisy-baro; pressure-dip; ejection-spike; baro-freeze; data-gap; pad-knock; long-pad; weak-motor; accel-clip; cato; no-light; reboot-coast; reboot-ejection
+S06-light-late,16,curated,Waits 3 s after burnout instead of 1 s,killed,critical,nominal; noisy-baro; pressure-dip; ejection-spike; baro-freeze; data-gap; pad-knock; long-pad; weak-motor; accel-clip; cato; no-light; reboot-ejection
+S07-relight-after-restart,119,curated,"After a restart before staging, goes back to staging (and lights with no attitude reference)",killed,critical,reboot-separation-tilted
+S08-no-gyro-bias,169,curated,Gyro bias not removed before integrating,survived,none,
+S09-gyro-default-range,107,curated,Gyro left at its 250 °/s power-on range,survived,none,
+S10-igniter-not-armed,68,curated,The igniter channel skips the arm check,killed,critical,disarmed
+S11-igniter-pin-not-output,96,curated,Only the two recovery pins are set as outputs,killed,serious,nominal; noisy-baro; pressure-dip; ejection-spike; baro-freeze; data-gap; pad-knock; long-pad; weak-motor; accel-clip; cato; no-light; reboot-coast; reboot-ejection
+S12-tight-apogee,202,curated,"Apogee on 3 falling samples or 2 m below the peak, with no time guard",survived,none,
