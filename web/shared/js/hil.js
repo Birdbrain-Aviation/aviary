@@ -56,6 +56,8 @@ export const FAULT_TYPES = {
   thrust: { label: "Weak or strong motor", desc: "Scales motor thrust for the whole flight.", params: [{ key: "factor", label: "Thrust", unit: "×", value: 0.85 }], whole: true },
   cato: { label: "Motor quits early", desc: "A stage's motor stops pushing partway through its burn, like a CATO.", params: [{ key: "stage", label: "Stage", kind: "stage", value: 0 }, { key: "after", label: "After", unit: "s", value: 0.4 }], whole: true },
   no_light: { label: "Motor fails to light", desc: "An upper stage's igniter fires but its motor doesn't light.", params: [{ key: "stage", label: "Stage", kind: "stage", value: 1 }], whole: true },
+  pyro_dud: { label: "Charge doesn't go off", desc: "The first pyro channel the board fires for this device does nothing, like an open e-match or a bad charge. Firing that channel again does nothing either. A backup on another channel should save the flight.", params: [{ key: "device", label: "Device", kind: "device", value: "apogee" }], whole: true },
+  reboot: { label: "Flight computer restarts", desc: "Mockingbird tells the board to restart, like a brownout or a watchdog reset. The rocket keeps flying while it boots, and it has to work out where it is. Needs MockingbirdHIL 1.2 or newer.", params: [], instant: true },
 };
 export const SENSORS = [["baro", "Barometer"], ["accel", "Accelerometer"], ["gyro", "Gyro"], ["gps", "GPS"]];
 export const FAULT_REFS = [["liftoff", "liftoff"], ["burnout", "burnout"], ["apogee", "apogee"]];
@@ -65,15 +67,16 @@ export function newFault(type) {
   return { type, ref: T.whole ? "whole" : "apogee", offset: T.whole ? 0 : -1, duration: T.whole ? 0 : 1, params: Object.fromEntries(T.params.map((p) => [p.key, p.value])) };
 }
 
-export function describeFault(fl, stageName = (k) => `stage ${k + 1}`) {
+export function describeFault(fl, stageName = (k) => `stage ${k + 1}`, deviceName = (id) => id) {
   const T = FAULT_TYPES[fl.type];
   if (!T) return fl.type;
   const P = fl.params || {};
-  const vals = T.params.map((p) => p.kind === "sensor" ? (SENSORS.find((s) => s[0] === P[p.key])?.[1] || P[p.key]).toLowerCase() : p.kind === "stage" ? stageName(Number(P[p.key])) : `${P[p.key]}${p.unit === "×" ? "×" : " " + p.unit}`);
+  const vals = T.params.map((p) => p.kind === "sensor" ? (SENSORS.find((s) => s[0] === P[p.key])?.[1] || P[p.key]).toLowerCase() : p.kind === "stage" ? stageName(Number(P[p.key]))
+    : p.kind === "device" ? (P[p.key] === "apogee" || !P[p.key] ? "apogee device" : deviceName(P[p.key])) : `${P[p.key]}${p.unit === "×" ? "×" : " " + p.unit}`);
   let when = "";
   if (!(T.whole || fl.ref === "whole")) {
     const o = Number(fl.offset) || 0;
-    when = `${o === 0 ? "at" : `${Math.abs(o)} s ${o < 0 ? "before" : "after"}`} ${fl.ref || "liftoff"}${T.holds ? "" : `, for ${Number(fl.duration) || 0} s`}`;
+    when = `${o === 0 ? "at" : `${Math.abs(o)} s ${o < 0 ? "before" : "after"}`} ${fl.ref || "liftoff"}${T.holds || T.instant ? "" : `, for ${Number(fl.duration) || 0} s`}`;
   }
   return [T.label + (vals.length ? ` (${vals.join(", ")})` : ""), when].filter(Boolean).join(", ");
 }
@@ -94,12 +97,30 @@ export function defaultTests(rocket) {
     { id: "accel-clip", name: "Accelerometer maxes out at 8 g", note: "Readings above 8 g are clipped.", faults: [{ type: "accel_clip", ref: "whole", offset: 0, duration: 0, params: { limit: 8 } }] },
     { id: "cato", name: "Motor quits early (CATO)", note: "The first motor stops 0.4 s into its burn. Recovery still has to work from a low apogee.", faults: [{ type: "cato", ref: "whole", offset: 0, duration: 0, params: { stage: 0, after: 0.4 } }] },
     { id: "no-light", name: "Upper stage doesn't light", needsStages: 2, note: "The flight computer fires the igniter but the motor never lights. Recovery still has to work.", faults: [{ type: "no_light", ref: "whole", offset: 0, duration: 0, params: { stage: 1 } }] },
+    { id: "drogue-dud", name: "Drogue charge doesn't go off", needsDevice: "apogee", note: "The first charge fired for the apogee device does nothing. It passes only if a backup charge on another pyro channel deploys it.", faults: [{ type: "pyro_dud", ref: "whole", offset: 0, duration: 0, params: { device: "apogee" } }] },
+    { id: "reboot-coast", name: "Restart while coasting", note: "The board restarts 1 s after burnout. It has to remember it's flying and still catch apogee. Needs MockingbirdHIL 1.2 or newer.", faults: [{ type: "reboot", ref: "burnout", offset: 1, duration: 0, params: {} }] },
   ];
   return T;
 }
 
-// Tests that make sense for this rocket (staging tests need two stages).
-export const testApplies = (t, rocket) => !t.needsStages || (rocket?.stages?.length || 1) >= t.needsStages;
+// Default tests from before 1.3, so that tests added later can be offered to
+// people who already have a saved list (and deleted ones don't come back).
+export const OLD_DEFAULT_IDS = ["nominal", "noisy-baro", "pressure-dip", "ejection-spike", "baro-freeze", "data-gap", "pad-knock", "long-pad", "weak-motor", "accel-clip", "cato", "no-light"];
+
+// Why a test can't run on this rocket, or "" when it can.
+export function testNeeds(t, rocket) {
+  if (t.needsStages && (rocket?.stages?.length || 1) < t.needsStages) return `needs ${t.needsStages}+ stages`;
+  if (t.needsDevice === "apogee" && !(rocket?.recovery || []).some((d) => d.deploy === "apogee")) return "needs an apogee deployment";
+  return "";
+}
+export const testApplies = (t, rocket) => !testNeeds(t, rocket);
+
+// The recovery device a "device" fault parameter means.
+export function faultDevice(rocket, value) {
+  const devs = rocket?.recovery || [];
+  if (!value || value === "apogee") return devs.find((d) => d.deploy === "apogee") || devs.find((d) => d.deploy !== "motor") || null;
+  return devs.find((d) => d.id === value) || null;
+}
 
 // What the flight computer is expected to do, from the rocket profile.
 export function buildExpectations(rocket, pyro) {
@@ -130,7 +151,15 @@ export function defaultPyro(rocket) {
   return rows.sort((a, b) => a.ch - b.ch);
 }
 
-export const DEFAULT_TOL = { apogeeEarly: 1.0, apogeeLate: 2.0, altitudeFrac: 0.1, altitudeMin: 15, timer: 0.5, igniteEarly: 0.3, igniteLate: 0.7, safeLanding: 7.6 };
+export const DEFAULT_TOL = { apogeeEarly: 1.0, apogeeLate: 2.0, altitudeFrac: 0.1, altitudeMin: 15, timer: 0.5, igniteEarly: 0.3, igniteLate: 0.7, safeLanding: 7.6,
+  backupLate: 3.0, backupAltFrac: 0.5, gradeEstimates: true, estAlt: 10, estAltFrac: 0.05, estVel: 6, estVelFrac: 0.08, restartBack: 5 };
+
+// Names the board's own altitude and speed can go by in hil.telemetry().
+export const FC_ALT = /^(alt|altitude|agl|h|height|baro_?alt|est_?alt)$/i;
+export const FC_VEL = /^(vel|velocity|v|vz|speed|vspeed|est_?vel)$/i;
+
+// Faults that are a short event: estimates aren't scored while they act.
+const EVENT_FAULTS = new Set(["baro_spike", "accel_spike", "stuck", "dropout", "gap"]);
 
 // ---------------------------------------------------------------- replay
 // Plays a real flight log back in place of the simulator, so a flight
@@ -216,6 +245,14 @@ export class HILRun {
       this.refTimes = { liftoff: ev("liftoff")?.t ?? 0, apogee: ev("apogee")?.t ?? 10, burnout: ev("burnout")?.t ?? 1 };
     }
     this.expectations = buildExpectations(rocket, this.cfg.pyro);
+    // the device whose first charge fails; ch is filled in when it fires
+    const dudF = this.faults.find((x) => x.type === "pyro_dud");
+    const dudDev = dudF ? faultDevice(rocket, dudF.params?.device) : null;
+    this.dud = dudDev ? { id: dudDev.id, ch: undefined } : null;
+    this.reboots = [];      // {t, back, ack, cant, gaveUp, unsolicited}
+    this.down = null;       // the restart in progress
+    this.rebooted = new Set();
+    this.heard = false;     // the board has said something this test (besides READY)
     this.actions = [];      // {t, kind, label, applied, source, ch}
     this.fcEvents = [];     // detections the FC reported (APOGEE etc.)
     this.fcTlm = {};        // name -> {t:[], v:[]}
@@ -273,6 +310,7 @@ export class HILRun {
       const evs = this.sim.step(dt);
       this.sampleIdx++;
       for (const e of evs) this.onEvent({ ...e, sim: true });
+      this._restartTick();
       this.truth.t.push(this.sim.t); this.truth.h.push(this.sim.h); this.truth.v.push(this.sim.v); this.truth.phase.push(this.sim.phase);
       this.truth.x.push(this.sim.x); this.truth.y.push(this.sim.y);
       this._sample();
@@ -306,7 +344,8 @@ export class HILRun {
     this._sense(m);
     if (this.onSample) this.onSample(m, act);
     if (this.cfg.protocol === "mb") {
-      if (this.sim.t - this.lastHeader >= 2) this._header();
+      // no header while the board restarts: it would start a new test instead of resuming
+      if (!this.down && this.sim.t - this.lastHeader >= 2) this._header();
       this._tx(withCS("MBD," + this.cfg.fields.map((k) => FIELDS[k] ? FIELDS[k].fmt(m) : "").join(",")));
     } else {
       let line = this.cfg.template.replace(/\{(\w+)\}/g, (_, k) => (FIELDS[k] ? FIELDS[k].fmt(m) : ""));
@@ -320,6 +359,47 @@ export class HILRun {
     const up = "a" + this.cfg.axis.up;
     this.sensed.baro.push(m && Number.isFinite(m.p_pa) ? this.sim.atm.heightFromPressure(m.p_pa) : NaN);
     this.sensed.acc.push(m && Number.isFinite(m[up]) ? (m[up] * this.cfg.axis.sign) / G0 : NaN);
+  }
+
+  // Restart faults: ask the board to restart when one is due, and give up
+  // waiting if it doesn't come back.
+  _restartTick() {
+    const t = this.sim.t;
+    for (const fl of this.faults) {
+      if (fl.type !== "reboot" || this.rebooted.has(fl) || t < this._faultStart(fl)) continue;
+      this.rebooted.add(fl);
+      if (this.down) continue;
+      const r = { t, back: null, ack: null, cant: false, gaveUp: false };
+      this.reboots.push(r);
+      if (this.cfg.protocol !== "mb") { r.unsupported = true; this.onEvent({ type: "reboot", t, label: "Restart skipped: it needs the MockingbirdHIL protocol", bad: true }); continue; }
+      this.down = r;
+      this._tx(withCS("MBC,REBOOT"));
+      this.onEvent({ type: "reboot", t, label: "Told the flight computer to restart" });
+    }
+    const d = this.down;
+    if (d && (t - d.t) / Math.max(1, this.cfg.timeScale || 1) > 12) {
+      d.gaveUp = true; this.down = null; this._header();
+      this.onEvent({ type: "reboot", t, label: d.cant ? "The board can't restart itself" : d.ack ? "The board didn't come back after restarting" : "The board didn't restart", bad: true });
+    }
+  }
+
+  // The board said READY during a test: it has just booted.
+  _booted(t) {
+    const resume = () => { this._tx(withCS(`MBC,RESUME,${this.cfg.rate},${this.cfg.timeScale}`)); this._header(); };
+    if (this.down) {
+      const d = this.down;
+      d.back = t; this.down = null; resume();
+      this.onEvent({ type: "rebootBack", t, label: `Flight computer back after ${(t - d.t).toFixed(1)} s of flight` });
+    } else if (this.sim.liftoff === null) {
+      // still on the pad (often the reset from opening the port): start cleanly
+      this._tx(withCS(`MBC,START,${this.cfg.rate},${this.cfg.timeScale}`)); this._header();
+    } else if (!this.heard) {
+      // its first word this test: it was slow to start, not restarting
+    } else {
+      this.reboots.push({ t, back: t, unsolicited: true });
+      resume();
+      this.onEvent({ type: "reboot", t, label: "The flight computer restarted by itself", bad: true });
+    }
   }
 
   _checkEnd() {
@@ -339,6 +419,7 @@ export class HILRun {
     const t = this.sim.t;
     const s = line.trim();
     if (!s) return;
+    if (!/^\$MBE,(READY|PONG)\b/i.test(s)) this.heard = true;
     let m;
     if ((m = s.match(/^\$MBT,(.*)$/))) {
       const parts = m[1].split("*")[0].split(",");
@@ -353,7 +434,17 @@ export class HILRun {
     }
     if ((m = s.match(/^\$MBE,([^,*]+)(?:,([^*]*))?/))) {
       const name = m[1].trim().toUpperCase(), val = (m[2] ?? "").trim();
-      if (name === "READY" || name === "PONG") return { kind: "hello", text: val };
+      if (name === "READY" || name === "PONG") {
+        // READY: it just booted. PONG counts too after Mockingbird reopened a
+        // port that dropped during a restart, since READY went out before that.
+        if ((name === "READY" || (name === "PONG" && this.down?.reconnected)) && this.started && !this.done && this.cfg.protocol === "mb") this._booted(t);
+        return { kind: "hello", text: val };
+      }
+      if (name === "RESTARTING" || name === "NORESTART") {
+        if (this.down) { if (name === "RESTARTING") this.down.ack = t; else this.down.cant = true; }
+        this.onEvent({ type: "fc", t, label: name === "RESTARTING" ? "Restarting" : "Can't restart itself", name, value: val });
+        return { kind: "event" };
+      }
       if (name === "STATS") { const [good, bad] = val.split(",").map(Number); this.fcStats = { good, bad }; return { kind: "stats", stats: this.fcStats }; }
       if (name === "PYRO") {
         // newer library versions add the sample time acted on (ms) and the processing time (µs)
@@ -397,11 +488,18 @@ export class HILRun {
 
   _act(action, t, why, ch, timing = null) {
     const key = action.type === "deploy" ? "deploy:" + action.id : action.type + ":" + action.stage;
-    const applied = this.sim.command({ ...action, source: "flight computer" });
+    // a dud: the first channel fired for this device does nothing, every time
+    let dud = false;
+    if (this.dud && action.type === "deploy" && action.id === this.dud.id) {
+      const c = ch ?? why;
+      if (this.dud.ch === undefined) this.dud.ch = c;
+      dud = this.dud.ch === c;
+    }
+    const applied = dud ? false : this.sim.command({ ...action, source: "flight computer" });
     const name = action.type === "deploy" ? (this.rocket.recovery.find((d) => d.id === action.id)?.name || action.id) + " deploy" : action.type === "ignite" ? `${this.rocket.stages[action.stage]?.name || "Stage " + action.stage} ignition` : `${this.rocket.stages[action.stage]?.name || "Stage"} separation`;
-    const rec = { t, key, label: name, applied, ch, source: why, h: this.sim.h, v: this.sim.v, ...(timing || {}) };
+    const rec = { t, key, label: name, applied, ch, source: why, h: this.sim.h, v: this.sim.v, ...(dud ? { dud: true } : {}), ...(timing || {}) };
     this.actions.push(rec);
-    this.onEvent({ type: "action", t, label: `${name} (${why})`, applied, h: this.sim.h, v: this.sim.v });
+    this.onEvent({ type: "action", t, label: dud ? `${name} (${why}): the charge didn't go off` : `${name} (${why})`, applied, bad: dud || undefined, h: this.sim.h, v: this.sim.v });
     return { kind: "action", rec };
   }
 
@@ -413,10 +511,18 @@ export class HILRun {
     const bo = s.burnout;
     const hAt = (tt) => { const i = this.truth.t.findIndex((x) => x >= tt); return i < 0 ? null : { h: this.truth.h[i], v: this.truth.v[i] }; };
     const checks = [];
+    const Tlab = (x) => `T${x - L >= 0 ? "+" : "−"}${Math.abs(x - L).toFixed(2)} s`;
+    const signed = (x, f) => { const s = f(Math.abs(x)); return /^0(\D|$)/.test(s) ? s : (x >= 0 ? "+" : "−") + s; };
+    const chName = (x) => (x.ch != null ? `pyro ${x.ch}` : x.source);
     for (const e of this.expectations) {
       const acts = this.actions.filter((a) => a.key === e.key);
-      const a = acts[0];
-      const c = { label: e.label, ok: false, expected: "", actual: "", detail: "", ch: e.ch };
+      // the firing that counts is the first one whose charge worked; after a
+      // dud that is a backup, which gets a wider window
+      const duds = acts.filter((x) => x.dud), live = acts.filter((x) => !x.dud);
+      const a = live.find((x) => x.applied) || live[0];
+      const backup = !!(a && duds.length);
+      const late = tol.apogeeLate + (backup ? tol.backupLate : 0);
+      const c = { label: e.label, ok: false, expected: "", actual: "", detail: "", ch: a?.ch ?? e.ch };
       if (e.type === "deploy") {
         if (e.rule === "apogee") {
           c.expected = e.delay ? `${e.delay} s after apogee` : "at apogee";
@@ -428,9 +534,9 @@ export class HILRun {
             else {
               const err = a.t - target;
               c.actual = `${err >= 0 ? "+" : "−"}${Math.abs(err).toFixed(2)} s`;
-              c.ok = err >= -tol.apogeeEarly && err <= tol.apogeeLate && !(a.t < ap.t && a.v > 15);
+              c.ok = err >= -tol.apogeeEarly && err <= late && !(a.t < ap.t && a.v > 15);
               if (a.t < ap.t && a.v > 15) c.detail = `Fired while still climbing at ${fmtVel(a.v)}.`;
-              else if (!c.ok) c.detail = err < 0 ? `Fired ${(-err).toFixed(2)} s early (allowed ${tol.apogeeEarly} s).` : `Fired ${err.toFixed(2)} s late (allowed ${tol.apogeeLate} s).`;
+              else if (!c.ok) c.detail = err < 0 ? `Fired ${(-err).toFixed(2)} s early (allowed ${tol.apogeeEarly} s).` : `Fired ${err.toFixed(2)} s late (allowed ${late} s${backup ? " for a backup" : ""}).`;
             }
           }
         } else if (e.rule === "altitude") {
@@ -448,15 +554,17 @@ export class HILRun {
             if (!c.ok) c.detail = err < 0 ? "Fired before apogee." : `Fired ${err.toFixed(1)} s after apogee. With an apogee this low it should fire as soon as the rocket starts down.`;
           } else {
             const allowed = Math.max(tol.altitudeMin, tol.altitudeFrac * e.altitude);
+            const allowedLow = backup ? Math.max(allowed, tol.backupAltFrac * e.altitude) : allowed;
+            const off = a.h - e.altitude;
             c.actual = `at ${fmtAlt(a.h)}${a.v > 0 ? " going up" : ""}`;
-            c.ok = !!ap && a.t > ap.t && Math.abs(a.h - e.altitude) <= allowed;
-            if (!c.ok) c.detail = !ap || a.t <= ap.t ? "Fired before apogee." : `${fmtAlt(Math.abs(a.h - e.altitude))} off (allowed ${fmtAlt(allowed)}).`;
+            c.ok = !!ap && a.t > ap.t && off <= allowed && -off <= allowedLow;
+            if (!c.ok) c.detail = !ap || a.t <= ap.t ? "Fired before apogee." : `${fmtAlt(Math.abs(off))} ${off < 0 ? "low" : "high"} (allowed ${fmtAlt(off < 0 ? allowedLow : allowed)}${backup && off < 0 ? " for a backup" : ""}).`;
           }
         } else if (e.rule === "timer") {
           c.expected = `${e.time} s after liftoff`;
           c.target = L + e.time;
           if (!a) c.actual = "never fired";
-          else { const err = a.t - (L + e.time); c.actual = `${err >= 0 ? "+" : "−"}${Math.abs(err).toFixed(2)} s`; c.ok = Math.abs(err) <= tol.timer; }
+          else { const err = a.t - (L + e.time); c.actual = `${err >= 0 ? "+" : "−"}${Math.abs(err).toFixed(2)} s`; c.ok = err >= -tol.timer && err <= tol.timer + (backup ? tol.backupLate : 0); }
         }
       } else if (e.type === "ignite") {
         c.expected = `${e.delay} s after ${this.rocket.stages[e.stage - 1].name.toLowerCase()} burnout`;
@@ -478,13 +586,84 @@ export class HILRun {
         if (!a) c.actual = "never fired";
         else { c.actual = `T+${(a.t - L).toFixed(2)} s`; c.ok = bo[e.stage] !== null && a.t >= bo[e.stage] && (!ap || a.t < ap.t); }
       }
-      if (acts.length > 1) c.detail = (c.detail ? c.detail + " " : "") + `Fired ${acts.length} times.`;
+      // notes on duds, backups and repeats
+      const notes = [];
+      if (duds.length && !a) {
+        c.ok = false; c.actual = "charge didn't go off";
+        notes.push(`${chName(duds[0])} fired at ${Tlab(duds[0].t)} but its charge failed, and nothing else fired for it. Add a backup channel for this on the Flight computer tab and have the firmware fire it too.`);
+      } else if (backup) notes.push(`${chName(duds[0])}'s charge didn't go off; the backup on ${chName(a)} fired at ${Tlab(a.t)}.`);
+      else {
+        const others = [...new Set(live.filter((x) => x !== a && chName(x) !== chName(a)).map(chName))];
+        if (others.length) notes.push(`Backup on ${others.join(", ")} also fired.`);
+      }
+      const per = {};
+      for (const x of acts) per[chName(x)] = (per[chName(x)] || 0) + 1;
+      for (const [k, n] of Object.entries(per)) if (n > 1) notes.push(`${k[0].toUpperCase() + k.slice(1)} fired ${n} times.`);
+      if (notes.length) c.detail = [c.detail, ...notes.map((x) => x[0].toUpperCase() + x.slice(1))].filter(Boolean).join(" ");
       if (a) { c.firedAt = a.t; c.firedH = a.h; c.boardT = a.boardT; c.procUs = a.procUs; if (Number.isFinite(c.target)) c.err = a.t - c.target; }
       if (e.type === "deploy" && e.rule === "altitude" && a) c.errAlt = a.h - e.altitude;
       checks.push(c);
     }
     const unexpected = this.actions.filter((a) => !this.expectations.some((e) => e.key === a.key));
     for (const u of unexpected) checks.push({ label: u.label, ok: false, expected: "not expected", actual: `T+${(u.t - L).toFixed(2)} s`, detail: "The flight computer did something the plan doesn't include." });
+
+    // restarts
+    const scale = Math.max(1, this.cfg.timeScale || 1);
+    for (const r of this.reboots) {
+      if (r.unsolicited) { checks.push({ label: "Unexpected restart", ok: false, expected: "no restarts", actual: Tlab(r.t), detail: "The flight computer restarted by itself in flight. Look for a brownout when a pyro fires, a watchdog timeout, or a crash." }); continue; }
+      const c = { label: "Restart", expected: `back within ${tol.restartBack} s of flight`, ok: false, actual: "", detail: "" };
+      if (r.unsupported) { c.actual = "not tested"; c.detail = "Restart tests need the MockingbirdHIL protocol, not a custom line format."; }
+      else if (r.back == null) {
+        c.actual = "never came back";
+        c.detail = r.cant ? "The library doesn't know how to restart this board. Define mbRestart() in your sketch to restart it."
+          : r.ack ? "It started restarting but never said READY again. Check that setup() calls hil.begin() and doesn't wait on anything that isn't there in a test."
+          : "It didn't restart. MockingbirdHIL 1.2 or newer restarts the board when asked; older versions ignore the request.";
+      } else {
+        // flight time missed is what matters; at 2× speed a 1 s boot misses 2 s
+        const gone = r.back - r.t;
+        c.actual = `back after ${gone.toFixed(1)} s`;
+        c.ok = gone <= tol.restartBack;
+        if (!c.ok) c.detail = `It was gone for ${gone.toFixed(1)} s of flight${scale > 1 ? ` (a ${(gone / scale).toFixed(1)} s boot at ${scale}× speed; run at 1× for real timing)` : ""}. The rocket moved ${fmtAlt(Math.abs((hAt(r.t)?.h ?? 0) - (hAt(r.back)?.h ?? 0)))} meanwhile.`;
+        // what it thought it was doing once it was back
+        const st = this.fcEvents.find((ev) => ev.t >= r.back && ev.name === "STATE");
+        if (st && /pad|idle|ground|init|boot|ready|arm|wait|standby/i.test(st.value)) {
+          c.detail = [c.detail, `Once back it said ${st.value}: it forgot it was flying. Save the flight phase and ground pressure to EEPROM or flash when they change, and read them back in setup().`].filter(Boolean).join(" ");
+          r.forgot = st.value;
+        } else if (st) r.resumedAs = st.value;
+        else if (this.expectations.some((e) => !this.actions.some((a) => a.key === e.key && a.t >= r.back) && !this.actions.some((a) => a.key === e.key && a.t < r.t))) {
+          // silent since it came back, and something still due never fired
+          c.detail = [c.detail, "Nothing it should have fired after the restart fired: it probably forgot it was flying. Save the flight phase and ground pressure to EEPROM or flash when they change, and read them back in setup()."].filter(Boolean).join(" ");
+          r.forgot = "unknown";
+        }
+      }
+      checks.push(c);
+    }
+
+    // the board's own altitude and speed against the truth
+    const est = this._scoreEstimates(L, ap, s);
+    if (est && tol.gradeEstimates !== false) {
+      if (est.alt) {
+        const allowed = Math.max(tol.estAlt, tol.estAltFrac * (ap?.h || s.maxH || 0));
+        const e = est.alt, peak = Number.isFinite(e.peakErr) ? e.peakErr : 0;
+        const c = { label: "Altitude estimate", expected: `within ${fmtAlt(allowed)}`, actual: `typical ${fmtAlt(e.rms)} off, peak ${signed(peak, fmtAlt)}`, ok: e.rms <= allowed && Math.abs(peak) <= allowed, detail: "" };
+        // the standard-atmosphere formula assumes 15 °C, so on a warm day every
+        // barometric altimeter reads low by about the same fraction
+        const tK = (this.site.tempC ?? 15) + 273.15, expect = 288.15 / tK;
+        const tempLike = Math.abs(e.ratio - 1) > 0.01 && Math.abs(e.ratio - expect) < 0.012;
+        if (e.units) c.detail = `Its numbers are about ${e.units.toFixed(2)}× the true altitude. Send metres in hil.telemetry(), not feet.`;
+        else if (!c.ok) c.detail = e.rms > allowed ? `Its altitude was ${fmtAlt(e.rms)} off on average (worst ${fmtAlt(e.max)} at ${Tlab(e.maxAt)}).` : `It read the peak as ${fmtAlt(e.peak)}; the true apogee was ${fmtAlt(ap.h)}.`;
+        if (!e.units && tempLike) c.detail = [c.detail, `It reads ${Math.abs((1 - e.ratio) * 100).toFixed(1)}% ${e.ratio < 1 ? "low" : "high"} all flight, which is what the standard atmosphere does at ${(this.site.tempC ?? 15).toFixed(0)} °C. Correcting with the pad temperature fixes it.`].filter(Boolean).join(" ");
+        checks.push(c);
+      }
+      if (est.vel) {
+        const allowed = Math.max(tol.estVel, tol.estVelFrac * (s.maxV || 0));
+        const e = est.vel;
+        const c = { label: "Speed estimate", expected: `within ${fmtVel(allowed)}`, actual: `typical ${fmtVel(e.rms)} off`, ok: e.rms <= allowed, detail: "" };
+        if (e.units) c.detail = `Its numbers are about ${e.units.toFixed(2)}× the true speed. Send m/s in hil.telemetry(), not ft/s.`;
+        else if (!c.ok) c.detail = `Its speed was ${fmtVel(e.rms)} off on average (worst ${fmtVel(e.max)} at ${Tlab(e.maxAt)}).`;
+        checks.push(c);
+      }
+    }
 
     // what the FC said it detected
     const det = [];
@@ -501,6 +680,10 @@ export class HILRun {
     if (fcBo && bo[0] !== null) det.push({ label: "Burnout detection", value: `${(fcBo.t - bo[0]).toFixed(2)} s after burnout` });
     const fcLand = this.fcEvents.find((e) => e.name === "LANDED" || (e.name === "STATE" && /land/i.test(e.value)));
     if (fcLand && s.landed) det.push({ label: "Landing detection", value: `${(fcLand.t - s.landed.t).toFixed(2)} s after touchdown` });
+    if (est?.alt) det.push({ label: "Its altitude", value: `typically ${fmtAlt(est.alt.rms)} off${Number.isFinite(est.alt.peakErr) ? `; peak read as ${fmtAlt(est.alt.peak)} (${signed(est.alt.peakErr, fmtAlt)})` : ""}` });
+    if (est?.vel) det.push({ label: "Its speed", value: `typically ${fmtVel(est.vel.rms)} off, worst ${fmtVel(est.vel.max)}` });
+    if (!est && this.cfg.protocol === "mb" && !this.replay) det.push({ label: "Its altitude and speed", value: "not sent, so not scored. Send them with hil.telemetry(\"alt\", …, \"vel\", …) in metres and m/s." });
+    for (const r of this.reboots) if (!r.unsupported && r.back != null) det.push({ label: r.unsolicited ? "Restarted by itself" : "Restart", value: `${Tlab(r.t)}${r.unsolicited ? "" : `, back after ${(r.back - r.t).toFixed(1)} s`}${r.resumedAs ? `, carried on in ${r.resumedAs}` : r.forgot && r.forgot !== "unknown" ? `, came back in ${r.forgot}` : ""}` });
 
     // outcome: if the run ended early under a parachute, finish the descent offline to report landing speed
     let landing = s.landed ? Math.abs(s.events.find((e) => e.type === "landing")?.impact ?? 0) : null;
@@ -516,12 +699,11 @@ export class HILRun {
 
     // pyro timing: when each output should have fired, which sample the board
     // acted on, how long it took to fire after reading it, and the link delay
-    const scale = this.cfg.timeScale || 1;
     const pyroTiming = checks.filter((c) => Number.isFinite(c.target) && Number.isFinite(c.firedAt)).map((c) => ({
       label: c.label, ch: c.ch, target: c.target - L, fired: c.firedAt - L,
       decisionMs: ((Number.isFinite(c.boardT) ? c.boardT : c.firedAt) - c.target) * 1000,
       processingUs: Number.isFinite(c.procUs) ? c.procUs : null,
-      linkMs: Number.isFinite(c.boardT) ? Math.max(0, ((c.firedAt - c.boardT) * 1000) / scale) : null,
+      linkMs: Number.isFinite(c.boardT) ? Math.max(0, ((c.firedAt - c.boardT) * 1000) / (this.cfg.timeScale || 1)) : null,
       fromBoard: Number.isFinite(c.boardT),
     }));
     const pass = checks.length > 0 && checks.every((c) => c.ok) && !outcome.hardLanding;
@@ -529,7 +711,60 @@ export class HILRun {
       verdict: pass ? "pass" : "fail", checks, detections: det, outcome, endReason: this.endReason,
       actions: this.actions.map((a) => ({ ...a, t: a.t - L })), fcEvents: this.fcEvents.map((e) => ({ ...e, t: e.t - L })),
       samples: this.sent, faults: this.faults, liftoff: L, boardStats: this.fcStats || null, pyroTiming,
+      estimates: est, reboots: this.reboots.map((r) => ({ ...r, t: r.t - L, back: r.back == null ? null : r.back - L, ack: r.ack == null ? null : r.ack - L })),
     };
+  }
+
+  // Compare the board's altitude and speed (from hil.telemetry) with the
+  // truth from liftoff to touchdown, leaving out short faults and restarts,
+  // which are there to throw it off. Values are in metres and m/s.
+  _scoreEstimates(L, ap, s) {
+    const T = this.truth;
+    if (!T.t.length || s.liftoff === null) return null;
+    const end = s.landed ? s.landed.t : T.t[T.t.length - 1];
+    const skip = [];
+    for (const fl of this.faults) {
+      if (!EVENT_FAULTS.has(fl.type) || FAULT_TYPES[fl.type]?.whole || fl.ref === "whole") continue;
+      const t0 = this._faultStart(fl);
+      skip.push([t0, t0 + Number(fl.duration || 0) + 1.5]);
+    }
+    for (const r of this.reboots) skip.push([r.t, r.back == null ? Infinity : r.back + 2]);
+    const skipped = (x) => skip.some(([a, b]) => x >= a && x <= b);
+    let k = 0;
+    const truthAt = (x, arr) => {
+      if (x <= T.t[0]) return arr[0];
+      while (k > 0 && T.t[k] > x) k--;
+      while (k < T.t.length - 2 && T.t[k + 1] <= x) k++;
+      const f = (x - T.t[k]) / ((T.t[k + 1] - T.t[k]) || 1);
+      return arr[k] + (arr[k + 1] - arr[k]) * Math.max(0, Math.min(1, f));
+    };
+    const lag = 1 / this.cfg.rate;   // it answers the sample before the one being sent
+    const score = (re, arr) => {
+      const name = Object.keys(this.fcTlm).find((n) => re.test(n));
+      if (!name) return null;
+      const ser = this.fcTlm[name];
+      let n = 0, sq = 0, max = 0, maxAt = null, peak = -Infinity;
+      const ratios = [];
+      k = 0;
+      for (let i = 0; i < ser.t.length; i++) {
+        const x = ser.t[i];
+        if (x < s.liftoff || x > end) continue;
+        const v = ser.v[i], tv = truthAt(x - lag, arr);
+        if (skipped(x)) continue;
+        if (v > peak) peak = v;
+        const err = v - tv;
+        n++; sq += err * err;
+        if (Math.abs(err) > max) { max = Math.abs(err); maxAt = x; }
+        if (Math.abs(tv) > 20) ratios.push(v / tv);
+      }
+      if (n < 10) return null;
+      ratios.sort((a, b) => a - b);
+      const mid = ratios.length ? ratios[ratios.length >> 1] : 1;
+      return { name, n, rms: Math.sqrt(sq / n), max, maxAt, peak, ratio: mid, units: Math.abs(mid - 3.2808) < 0.3 ? mid : null };
+    };
+    const alt = score(FC_ALT, T.h), vel = score(FC_VEL, T.v);
+    if (alt && ap) alt.peakErr = alt.peak - ap.h;
+    return alt || vel ? { alt, vel } : null;
   }
 
   // flight data for saving (Heron can open it)
@@ -551,24 +786,35 @@ export class HILRun {
 
 // ---------------------------------------------------------------- virtual FC
 // A reference dual-deploy / staging flight computer that speaks the protocol,
-// built from the rocket profile. It mirrors the example Arduino sketch.
+// built from the rocket profile. It mirrors the example Arduino sketch, and
+// also shows two things the sketch leaves out: backup charges (any extra pyro
+// channel set for a device fires a little later) and surviving a restart (it
+// keeps its flight phase in "EEPROM" that a restart doesn't clear).
 export class VirtualFC {
   constructor({ rocket, pyro, upAxis = "z", upSign = 1, send }) {
     this.send = send;
     this.upAxis = upAxis; this.upSign = upSign;
-    const ch = (pred) => pyro.find((p) => p.action && pred(p.action))?.ch;
+    const chs = (pred) => pyro.filter((p) => p.action && pred(p.action)).map((p) => p.ch);
+    const ch = (pred) => chs(pred)[0];
     const devs = rocket.recovery || [];
     const drogue = devs.find((d) => d.deploy === "apogee");
     const main = devs.find((d) => d.deploy === "altitude");
+    const dCh = drogue ? chs((a) => a.type === "deploy" && a.id === drogue.id) : [];
+    const mCh = main ? chs((a) => a.type === "deploy" && a.id === main.id) : [];
     this.plan = {
-      drogueCh: drogue ? ch((a) => a.type === "deploy" && a.id === drogue.id) : null, drogueDelay: drogue?.delay || 0,
-      mainCh: main ? ch((a) => a.type === "deploy" && a.id === main.id) : null, mainAlt: main?.altitude ?? 150,
+      drogueCh: dCh[0] ?? null, drogueBackup: dCh.slice(1), drogueDelay: drogue?.delay || 0,
+      mainCh: mCh[0] ?? null, mainBackup: mCh.slice(1), mainAlt: main?.altitude ?? 150,
       stages: rocket.stages.map((s, k) => (k > 0 && s.ignition !== "direct" ? { ch: ch((a) => a.type === "ignite" && a.stage === k), delay: s.ignitionDelay || 0 } : null)).filter(Boolean),
     };
     this.map = []; this.active = false;
+    this.nvm = null;        // survives a restart, like EEPROM
+    this.booting = null;
     this.reset();
-    setTimeout(() => this.send("$MBE,READY,Virtual flight computer"), 0);
+    // it "boots" before the test starts, like a board after the port opens
+    this.send("$MBE,READY,Virtual flight computer");
   }
+  // what a restart must not forget
+  _save() { this.nvm = { phase: this.phase, p0: this.p0, launchT: this.launchT, burnT: this.burnT, apT: this.apT, stageIdx: this.stageIdx, maxAlt: this.maxAlt, fired: { ...this.fired } }; }
   reset() {
     Object.assign(this, { phase: "PAD", candT: null, candAlt: 0, pushT: 0, pushLast: 0, p0: null, padN: 0, alt: 0, vel: 0, est: 0, maxAlt: 0, lastT: null, launchT: null, burnT: null, apT: null,
       fired: {}, below: 0, stageIdx: 0, landT: null, n: 0, accUp: 9.81, boostN: 0 });
@@ -578,10 +824,22 @@ export class VirtualFC {
     if (!m) return;
     if (m[3] && checksum(`${m[1]},${m[2]}`) !== m[3].toUpperCase()) return;
     const parts = m[2].split(",");
+    if (this.booting) {
+      // restarting: deaf for a second of test time (the samples are only a clock here)
+      const i = this.map.indexOf("t_ms");
+      const t = m[1] === "MBD" && i >= 0 ? Number(parts[i]) / 1000 : NaN;
+      if (Number.isFinite(t)) {
+        this.booting.at ??= t;
+        if (t - this.booting.at >= 1.0) this._boot();
+      }
+      return;
+    }
     if (m[1] === "MBC") {
-      if (parts[0] === "START") { this.active = true; this.reset(); }
+      if (parts[0] === "START") { this.active = true; this.nvm = null; this.reset(); }
+      else if (parts[0] === "RESUME") this.active = true;
       else if (parts[0] === "STOP") this.active = false;
       else if (parts[0] === "PING") this.send("$MBE,PONG,Virtual flight computer");
+      else if (parts[0] === "REBOOT") { this.send("$MBE,RESTARTING"); this.active = false; this.booting = { at: null }; }
     } else if (m[1] === "MBH") this.map = parts;
     else if (m[1] === "MBD" && this.active) {
       const s = {};
@@ -589,8 +847,19 @@ export class VirtualFC {
       this.step(s);
     }
   }
-  _state(p) { if (p !== this.phase) { this.phase = p; this.send(`$MBE,STATE,${p}`); } }
-  _fire(ch, why) { if (ch == null || this.fired[ch]) return; this.fired[ch] = true; this.send(`$MBE,PYRO,${ch},${Math.round((this.lastT ?? 0) * 1000)},0`); if (why) this.send(`$MBL,${why}`); }
+  // power comes back: RAM is gone, the saved flight state isn't
+  _boot() {
+    this.booting = null; this.map = []; this.active = false;
+    this.reset();
+    const s = this.nvm;
+    if (s && s.phase !== "PAD" && s.phase !== "LANDED") {
+      Object.assign(this, { phase: s.phase, p0: s.p0, launchT: s.launchT, burnT: s.burnT, apT: s.apT, stageIdx: s.stageIdx, maxAlt: s.maxAlt, fired: { ...s.fired }, seed: true });
+    }
+    this.send("$MBE,READY,Virtual flight computer");
+    if (this.seed) { this.send(`$MBL,Restarted mid-flight: carrying on in ${this.phase} from the saved state`); this.send(`$MBE,STATE,${this.phase}`); }
+  }
+  _state(p) { if (p !== this.phase) { this.phase = p; this.send(`$MBE,STATE,${p}`); this._save(); } }
+  _fire(ch, why) { if (ch == null || this.fired[ch]) return; this.fired[ch] = true; this._save(); this.send(`$MBE,PYRO,${ch},${Math.round((this.lastT ?? 0) * 1000)},0`); if (why) this.send(`$MBL,${why}`); }
   step(s) {
     const t = s.t_ms / 1000;
     const dt = this.lastT === null ? 0.02 : Math.max(1e-3, t - this.lastT);
@@ -602,6 +871,8 @@ export class VirtualFC {
     if (Number.isFinite(p)) {
       if (this.phase === "PAD") { this.padN++; this.p0 = this.p0 === null ? p : this.p0 + (p - this.p0) / Math.min(this.padN, 100); }
       const alt = 44330.77 * (1 - Math.pow(p / this.p0, 0.190263));
+      // after a restart, start the filter where the rocket is, not at zero
+      if (this.seed) { this.seed = false; this.est = alt; this.vel = 0; }
       // alpha-beta filter
       const pred = this.est + this.vel * dt;
       const r = alt - pred;
@@ -645,11 +916,15 @@ export class VirtualFC {
         if (this.plan.mainCh != null && this.est < this.plan.mainAlt && this.vel < 0) { this._fire(this.plan.mainCh, "Main"); this._state("MAIN"); }
         break;
       case "MAIN":
-        if (this.est < 10 && Math.abs(this.vel) < 1.5) { this.landT ??= t; if (t - this.landT > 2) { this.send("$MBE,LANDED"); this._state("LANDED"); } } else this.landT = null;
+        if (this.est < 10 && Math.abs(this.vel) < 1.5) { this.landT ??= t; if (t - this.landT > 2) { this.send("$MBE,LANDED"); this._state("LANDED"); this.nvm = null; } } else this.landT = null;
         break;
     }
+    const down = this.phase === "DESCENT" || this.phase === "MAIN";
     // The drogue fires after its delay even if a low apogee already brought the main out.
-    if ((this.phase === "DESCENT" || this.phase === "MAIN") && this.plan.drogueCh != null && !this.fired[this.plan.drogueCh] && t - this.apT >= this.plan.drogueDelay) this._fire(this.plan.drogueCh, "Drogue");
+    if (down && this.plan.drogueCh != null && !this.fired[this.plan.drogueCh] && t - this.apT >= this.plan.drogueDelay) this._fire(this.plan.drogueCh, "Drogue");
+    // backups: a second later for the drogue, 20% lower for the main
+    if (down) for (const b of this.plan.drogueBackup) if (!this.fired[b] && t - this.apT >= this.plan.drogueDelay + 1) this._fire(b, "Drogue backup");
+    if (this.phase === "MAIN" || (down && this.plan.mainCh == null)) for (const b of this.plan.mainBackup) if (!this.fired[b] && this.est < this.plan.mainAlt * 0.8 && this.vel < 0) this._fire(b, "Main backup");
   }
 }
 

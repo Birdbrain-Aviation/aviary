@@ -11,10 +11,11 @@ import { FlightAnimation, phasesFromSamples } from "/shared/js/flightviz.js";
 import { openMonteCarlo, showResults as showMCResults } from "./montecarlo.js";
 import { replayFromLog } from "/shared/js/replay.js";
 import { SerialLink, serialSupported, describePort, BAUDS } from "/shared/js/serial.js";
-import { HILRun, VirtualFC, defaultTests, testApplies, describeFault, DEFAULT_FIELDS, DEFAULT_TOL, FAULT_TYPES, withCS } from "/shared/js/hil.js";
+import { HILRun, VirtualFC, defaultTests, testApplies, testNeeds, describeFault, DEFAULT_FIELDS, DEFAULT_TOL, FAULT_TYPES, OLD_DEFAULT_IDS, FC_ALT, FC_VEL, withCS } from "/shared/js/hil.js";
 import { loadRockets } from "/shared/js/rockets.js";
 import { RocketEditor } from "./rocket.js";
 import { renderSetup, editTest, pyroFor } from "./setup.js";
+import { printRunReport, printSuiteReport } from "./report.js";
 
 const DEFAULTS = {
   theme: "day", units: "imperial", tab: "run",
@@ -51,7 +52,15 @@ async function main() {
   connectEvents();
   try { version = (await host.info()).version || "dev"; } catch { /* */ }
   M.store = await loadRockets(host);
-  if (!Array.isArray(set.tests) || !set.tests.length) { set.tests = defaultTests(); set.save(); }
+  if (!Array.isArray(set.tests) || !set.tests.length) { set.tests = defaultTests(); set.defaultsSeen = set.tests.map((x) => x.id); set.save(); }
+  else {
+    // offer default tests added since this list was saved, once
+    const seen = new Set(set.defaultsSeen || OLD_DEFAULT_IDS);
+    const fresh = defaultTests().filter((x) => !seen.has(x.id) && !set.tests.some((y) => y.id === x.id));
+    if (fresh.length) set.tests.push(...fresh);
+    set.defaultsSeen = defaultTests().map((x) => x.id).concat([...seen]).filter((x, i, a) => a.indexOf(x) === i);
+    set.save();
+  }
   if (!set.tests.find((t) => t.id === set.selectedTest)) set.selectedTest = set.tests[0].id;
   build();
   setInterval(idleTick, 400);
@@ -218,7 +227,7 @@ function runEmpty() {
 function renderTestSel() {
   const rocket = currentRocket();
   clear(ui.testSel);
-  for (const t of set.tests) ui.testSel.append(h("option", { value: t.id, selected: t.id === set.selectedTest, disabled: !testApplies(t, rocket) }, t.name + (testApplies(t, rocket) ? "" : " (needs 2+ stages)")));
+  for (const t of set.tests) ui.testSel.append(h("option", { value: t.id, selected: t.id === set.selectedTest, disabled: !testApplies(t, rocket) }, t.name + (testApplies(t, rocket) ? "" : ` (${testNeeds(t, rocket)})`)));
   const n = set.tests.filter((t) => set.checked[t.id] !== false && testApplies(t, rocket)).length;
   ui.suiteBtn.textContent = `Run ${n} ticked test${n === 1 ? "" : "s"}`;
   ui.suiteBtn.disabled = !n || !!M.run;
@@ -261,7 +270,7 @@ function renderBar() {
   const t = currentTest();
   const parts = [];
   if (M.suite && running) parts.push(h("b", null, `Test ${M.suite.total - M.suite.queue.length} of ${M.suite.total}. `));
-  parts.push(t.note || (t.faults.length ? t.faults.map((f) => describeFault(f, (k) => currentRocket().stages[k]?.name || `stage ${k + 1}`)).join("; ") : "No faults."));
+  parts.push(t.note || (t.faults.length ? t.faults.map((f) => describeFault(f, (k) => currentRocket().stages[k]?.name || `stage ${k + 1}`, (id) => currentRocket().recovery?.find((d) => d.id === id)?.name || id)).join("; ") : "No faults."));
   if (M.link?.type === "serial" && !running) parts.push(h("span", { class: "warn-inline" }, " Igniters out and pyro battery unplugged?"));
   if (M.link?.type === "serial" && set.run.speed > 1) parts.push(h("span", { class: "muted" }, ` At ${set.run.speed}× your firmware must time things with hil.millis().`));
   clear(ui.barNote).append(...parts);
@@ -278,7 +287,7 @@ function renderTests() {
     ui.testList.append(h("div", { class: "test-item" + (t.id === set.selectedTest ? " on" : "") + (applies ? "" : " na"), role: "listitem", title: t.note || "", onclick: () => selectTest(t.id), ondblclick: () => openTestEditor(t) },
       cb, h("div", { class: "nm" }, t.name),
       st ? h("span", { class: "badge " + st.verdict }, st.verdict === "pass" ? "PASS" : "FAIL") : h("span", { class: "badge" }, "–"),
-      h("div", { class: "sub" }, !applies ? "Needs a rocket with 2 or more stages" : t.faults.length ? t.faults.map((f) => FAULT_TYPES[f.type]?.label || f.type).join(", ") : "No faults")));
+      h("div", { class: "sub" }, !applies ? testNeeds(t, rocket)[0].toUpperCase() + testNeeds(t, rocket).slice(1) : t.faults.length ? t.faults.map((f) => FAULT_TYPES[f.type]?.label || f.type).join(", ") : "No faults")));
   }
   renderTestSel();
 }
@@ -371,6 +380,8 @@ async function connectSerial(port) {
   const link = new SerialLink({
     onLine: (l) => fromFC(l),
     onStatus: (s) => {
+      if (s.type === "lost" && M.run?.down && M.link?.serial === link) { waitForReturn(link, port); return; }
+      if (s.type === "lost" && M.reconnecting) return;
       if (s.type === "lost") { logEvent("The flight computer was unplugged", "bad"); if (M.run) stopRun("The flight computer was unplugged"); M.link = null; afterLinkChange(); }
       else if (s.type === "warn") consoleAdd(s.message, "err");
     },
@@ -380,6 +391,38 @@ async function connectSerial(port) {
   M.hello = null; M.rxCount = 0; M.connectedAt = performance.now(); M.lastPing = performance.now(); M.safetyAck = false;
   logEvent("Connected", "good", `${describePort(port)} at ${set.link.baud} baud`);
   afterLinkChange();
+}
+
+// Boards with USB built into the chip (Pico, ESP32-S3, Teensy, most STM32 and
+// SAMD boards) drop off USB while they restart. During a restart test, wait
+// for the same kind of port to come back, open it, and ask who's there (its
+// READY went out before the port was open).
+async function waitForReturn(link, oldPort) {
+  if (M.reconnecting) return;
+  M.reconnecting = true;
+  const run = M.run, info = oldPort.getInfo?.() || {};
+  logEvent("The board's USB port dropped while it restarts", "", "waiting for it to come back", runT());
+  const until = performance.now() + 15000;
+  while (performance.now() < until && M.run === run && !run.done) {
+    await new Promise((r) => setTimeout(r, 250));
+    let ports = [];
+    try { ports = await navigator.serial.getPorts(); } catch { /* */ }
+    const p = ports.find((x) => { const i = x.getInfo?.() || {}; return i.usbVendorId === info.usbVendorId && i.usbProductId === info.usbProductId && !x.readable; });
+    if (!p) continue;
+    try {
+      // DTR on: native USB boards often wait for it before talking
+      await link.connect(p, { baudRate: set.link.baud, dtr: true });
+      M.reconnecting = false;
+      M.link = { ...M.link, label: describePort(p) };
+      logEvent("Reconnected to the board", "good", "", runT());
+      if (run.down) run.down.reconnected = true;
+      sendLine(withCS("MBC,PING"));
+      return;
+    } catch { /* not ready yet */ }
+  }
+  M.reconnecting = false;
+  if (M.run === run && !run.done) { logEvent("The flight computer was unplugged", "bad"); stopRun("The board's USB port didn't come back after it restarted"); }
+  M.link = null; afterLinkChange();
 }
 
 function connectVirtual() {
@@ -463,7 +506,7 @@ const logStamp = () => (M.run ? (M.run.sim.t - M.run.launchAt).toFixed(3) : new 
 async function startRun(test, fromSuite = false) {
   if (M.run || !test) return;
   const rocket = test.rocketOverride || currentRocket();
-  if (!testApplies(test, rocket)) { toast(`"${test.name}" needs a rocket with at least ${test.needsStages} stages.`, "fault"); return; }
+  if (!testApplies(test, rocket)) { toast(`"${test.name}" ${testNeeds(test, rocket)}.`, "fault"); return; }
   if (!M.link) { openConnect(() => startRun(test, fromSuite)); return; }
   if (M.link.type === "serial" && !M.safetyAck) {
     const ok = await confirmBox("Before the first test", "Mockingbird makes the flight computer believe it is flying, so it will try to fire every pyro channel. Take out all igniters and e-matches and unplug the pyro battery.", "Charges are disconnected, start", "primary");
@@ -588,6 +631,11 @@ function onRunEvent(e) {
     else if (e.type === "landing") logEvent("Touchdown", Math.abs(e.impact) > set.run.tol.safeLanding ? "bad" : "good", fmtV(Math.abs(e.impact)), T);
     return;
   }
+  if (e.type === "reboot" || e.type === "rebootBack") {
+    logEvent(e.label, e.bad ? "bad" : e.type === "rebootBack" ? "good" : "hot", "", T);
+    M.markers.push({ x: T, kind: e.bad ? "bad" : "fc", text: e.type === "rebootBack" ? "FC back" : e.bad ? e.label : "Restart" }); M.markersDirty = true;
+    return;
+  }
   if (e.type === "fc") {
     logEvent(`Flight computer: ${e.label}`, "fc", "", T);
     if (e.name === "STATE") M.fcState = e.value;
@@ -600,8 +648,6 @@ function onRunEvent(e) {
   }
 }
 
-const FC_ALT = /^(alt|altitude|agl|h|height|baro_?alt|est_?alt)$/i;
-const FC_VEL = /^(vel|velocity|v|vz|speed|vspeed|est_?vel)$/i;
 
 function flushCharts() {
   const run = M.run;
@@ -685,6 +731,7 @@ async function finishRun() {
   set.save();
   for (const c of [ui.altC, ui.velC, ui.senC]) { c.o.streaming = false; c.resetView(); }
   if (M.suite) M.suite.results.push({ test: test.name, verdict: stopped ? "stopped" : rep.verdict, firstFail: rep.checks?.find((c) => !c.ok)?.label || "", dir,
+    checks: (rep.checks || []).map((c) => ({ label: c.label, ok: c.ok, detail: c.detail })),
     ...(M.suite.onDone ? { rep: { verdict: rep.verdict, checks: rep.checks, outcome: rep.outcome }, params: test.mcParams } : {}) });
   ui.sideTab = "result"; ui.sideTabs.set("result");
   renderTests(); renderHistory(); renderBar(); renderSpeed(); renderSide(true); renderPill();
@@ -830,6 +877,8 @@ function finishSuite() {
   M.suite = null;
   if (!s) return;
   M.suiteSummary = s;
+  s.at = new Date().toISOString();
+  s.board = M.link?.type === "virtual" ? "Virtual flight computer" : [M.hello, M.link?.label].filter(Boolean).join(" on ");
   if (s.onDone) { s.onDone(s.results.filter((r) => r.rep && r.verdict !== "stopped")); renderSide(true); renderBar(); return; }
   const passed = s.results.filter((r) => r.verdict === "pass").length;
   toast(`${passed} of ${s.results.length} tests passed`, passed === s.results.length ? "go" : "fault", 7000);
@@ -977,6 +1026,9 @@ function renderResult() {
     h("div", { class: "big" }, verdict === "pass" ? "Passed" : verdict === "fail" ? "Failed" : "Stopped early"),
     h("div", { class: "who" }, `${R.meta?.test?.name || "Test"} · ${R.meta?.rocket?.name || ""}`),
     h("div", { class: "muted", style: { fontSize: "13px" } }, [when ? when.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "", R.meta?.link ? ` · ${R.meta.link}` : "", R.meta?.hello && R.meta.linkType === "serial" ? ` (${R.meta.hello})` : ""].join(""))));
+  box.append(h("div", { class: "res-sec row res-tools" },
+    h("button", { class: "btn small", onclick: () => printRunReport({ R: { ...R, rocketProfile: R.rocketProfile || M.rocketSnap, settings: R.settings || M.cfgSnap }, ds: M.ds, D, fmtA, fmtV, version }).catch((e) => toast("Couldn't make the report: " + e.message, "fault")) }, "Print report"),
+    h("span", { class: "note" }, "Or save it as a PDF from the print window.")));
   if (R.error) box.append(h("div", { class: "res-sec" }, h("p", { class: "note", style: { color: "var(--fault)" } }, "The grader hit an error: " + R.error)));
   if (R.meta?.linkType === "serial" && R.fcLines === 0) box.append(h("div", { class: "res-sec" }, h("div", { class: "safety" }, "Mockingbird heard nothing from the flight computer during this test. Check the baud rate, that the firmware calls hil.poll(), and that the Serial Monitor is closed.")));
   if (R.slowLink) box.append(h("div", { class: "res-sec" }, h("div", { class: "safety" }, "The serial link couldn't keep up, so samples arrived late. Lower the sample rate or raise the baud rate.")));
@@ -1014,7 +1066,7 @@ function renderResult() {
     ...(R.boardStats ? [h("span", { class: "k" }, "Board received"), h("span", { class: R.boardStats.bad ? "bad-text" : "" }, `${fmt(R.boardStats.good)}${R.boardStats.bad ? `, ${fmt(R.boardStats.bad)} damaged` : ", none damaged"}`)] : []))));
   const bs = R.boardStats;
   if (bs && (bs.bad > 0 || bs.good < 0.97 * (R.samples || 0))) box.append(h("div", { class: "res-sec" }, h("div", { class: "safety" }, `The board missed ${fmt(Math.max(0, (R.samples || 0) - bs.good))} samples. Call hil.poll() more often (long SD card writes block it), lower the sample rate, or drop fields you don't use.`)));
-  if (R.faults?.length) box.append(h("div", { class: "res-sec" }, h("h4", null, "Faults injected"), h("ul", { class: "plain" }, R.faults.map((f) => h("li", null, describeFault(f, (k) => R.rocketProfile?.stages?.[k]?.name || `stage ${k + 1}`))))));
+  if (R.faults?.length) box.append(h("div", { class: "res-sec" }, h("h4", null, "Faults injected"), h("ul", { class: "plain" }, R.faults.map((f) => h("li", null, describeFault(f, (k) => R.rocketProfile?.stages?.[k]?.name || `stage ${k + 1}`, (id) => R.rocketProfile?.recovery?.find((d) => d.id === id)?.name || id))))));
   if (R.dir) box.append(h("div", { class: "res-sec" }, h("h4", null, "Saved"),
     h("div", { class: "note", style: { wordBreak: "break-word" } }, `Documents\\Aviary\\Mockingbird Runs\\${R.dir}`),
     h("div", { class: "row", style: { marginTop: "6px" } }, h("button", { class: "btn small", onclick: () => host.reveal("mockingbird", `${R.dir}/flight.csv`).catch((e) => toast(e.message, "fault")) }, "Show in folder"),
@@ -1024,7 +1076,8 @@ function renderResult() {
 function suiteTable(s) {
   const passed = s.results.filter((r) => r.verdict === "pass").length;
   return h("div", { class: "res-sec flush suite" },
-    h("h4", null, `${passed} of ${s.results.length} tests passed · ${s.rocket}`),
+    h("h4", { class: "suite-head" }, h("span", null, `${passed} of ${s.results.length} tests passed · ${s.rocket}`),
+      s.mc ? "" : h("button", { class: "btn small", onclick: () => printSuiteReport({ s, version }).catch((e) => toast("Couldn't make the report: " + e.message, "fault")) }, "Print")),
     h("table", { class: "data" }, h("tbody", null, s.results.map((r) => h("tr", { class: "clickable", onclick: () => { const hr = set.history.find((x) => x.dir === r.dir); if (hr) openPast(hr); } },
       h("td", null, h("span", { class: "badge " + r.verdict }, r.verdict === "pass" ? "PASS" : r.verdict === "fail" ? "FAIL" : "STOP")),
       h("td", null, r.test), h("td", { class: "muted" }, r.firstFail))))));

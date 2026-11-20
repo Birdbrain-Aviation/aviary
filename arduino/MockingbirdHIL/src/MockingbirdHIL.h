@@ -21,6 +21,14 @@
 // smaller MB_LINE_MAX), and works on
 // AVR, RP2040/RP2350, STM32, ESP32, Teensy and other Arduino cores.
 //
+// Restart tests: Mockingbird can ask the board to restart mid-flight, like a
+// brownout. The library restarts it (watchdog on AVR, ESP.restart() on ESP32,
+// a system reset on ARM boards); when the board says READY again, Mockingbird
+// resumes the test where the rocket now is, without testStarted(). Firmware
+// that keeps its flight phase in EEPROM or flash can carry on. To restart a
+// board some other way, define your own:
+//   void mbRestart() { /* reset this board */ }
+//
 // SAFETY: remove igniters/e-matches and unplug the pyro battery while testing.
 // Mockingbird makes your flight computer believe it is flying.
 
@@ -65,6 +73,11 @@ class MockingbirdHIL {
   bool testStarted();
   bool testEnded();
 
+  // True once when a test carries on after the board restarted mid-flight
+  // (testStarted() is not true then: the flight is still going). Your firmware
+  // doesn't need this; it's there for logging.
+  bool resumed();
+
   // ---- the latest simulated sample (NAN when that field wasn't sent) ----
   uint32_t sampleTime() const { return _tms; }  // ms since the test started
   uint32_t millis();                            // sample clock in a test, else ::millis()
@@ -108,7 +121,7 @@ class MockingbirdHIL {
   char _buf[MB_LINE_MAX];
   uint16_t _len;
   bool _overflow;
-  bool _active, _started, _ended;
+  bool _active, _started, _ended, _resumed;
   uint8_t _map[MB_MAX_COLS];
   uint8_t _ncols;
   bool _sent[FIELD_COUNT];
@@ -125,10 +138,16 @@ class MockingbirdHIL {
   void _header(char* s);
   void _control(char* s);
   void _start(uint16_t rate, float scale);
+  void _resume(uint16_t rate, float scale);
+  void _restart();
   void _stop();
   void _stats();
   void _clearValues();
   void _tag(const __FlashStringHelper* tag);
 };
+
+// Restarts the board. The library's version is weak: define your own
+// mbRestart() to replace it.
+void mbRestart();
 
 #endif

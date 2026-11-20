@@ -3,7 +3,7 @@
 # version information and no console window. Run from the project folder.
 set -euo pipefail
 cd "$(dirname "$0")"
-VER=${VER:-1.2.1}
+VER=${VER:-1.3.0}
 mkdir -p build/icons build/windows
 declare -A NAME=([owl]=Owl [heron]=Heron [mockingbird]=Mockingbird)
 declare -A DESC=([owl]="Owl ground station" [heron]="Heron flight data analyzer" [mockingbird]="Mockingbird flight computer tester")

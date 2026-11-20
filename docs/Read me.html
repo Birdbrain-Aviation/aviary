@@ -106,7 +106,7 @@
   <li>Press <b>Connect</b>, choose <b>Your flight computer</b>, pick the port, and connect. Close the Arduino IDE's Serial Monitor first, because only one program can use a port. The status turns green with <i>Ready: (your board's name)</i> when the library answers.</li>
   <li>Pick a test on the left and press <b>Start test</b>, or tick several and press <b>Run ticked tests</b>.</li>
 </ol>
-<p>The <b>virtual flight computer</b> is built in, so you can try everything without hardware. It's deliberately simple, so it usually fails two of the standard tests (the pressure dip and the knock on the pad). That's those tests doing their job.</p>
+<p>The <b>virtual flight computer</b> is built in, so you can try everything without hardware. It's deliberately simple, so it fails two of the standard tests: the pressure dip, and the drogue charge that doesn't go off (until you give the drogue a backup channel). That's those tests doing their job.</p>
 <h3>The standard tests</h3>
 <table>
   <tr><th>Test</th><th>What it checks</th></tr>
@@ -122,16 +122,23 @@
   <tr><td>Accelerometer maxes out at 8 g</td><td>Readings above 8 g are clipped.</td></tr>
   <tr><td>Motor quits early (CATO)</td><td>The motor stops 0.4 s into its burn. Recovery still has to work from a low apogee.</td></tr>
   <tr><td>Upper stage doesn't light</td><td>Staged rockets only: the igniter fires but the motor never lights.</td></tr>
+  <tr><td>Drogue charge doesn't go off</td><td>The first charge fired for the apogee parachute does nothing, like an open e-match. Passes only if a backup charge on another channel deploys it.</td></tr>
+  <tr><td>Restart while coasting</td><td>The board restarts 1 s after burnout, like a brownout. It has to remember it's flying and still catch apogee. Needs MockingbirdHIL 1.2 or newer.</td></tr>
 </table>
-<p>Use <b>Edit</b> to change a test or <b>New test</b> to build your own from any mix of faults: pressure jumps and drift, noisy or frozen sensors, dropouts, data gaps, bumps, accelerometer range, thrust scale, early motor cutoff and failed ignition. Each fault starts a set time before or after liftoff, burnout or apogee.</p>
+<p>Use <b>Edit</b> to change a test or <b>New test</b> to build your own from any mix of faults: pressure jumps and drift, noisy or frozen sensors, dropouts, data gaps, bumps, accelerometer range, thrust scale, early motor cutoff, failed ignition, a charge that doesn't go off, and a restart. Each fault starts a set time before or after liftoff, burnout or apogee. If you already had a list of tests from an earlier version, the new standard tests are added to the end of it.</p>
+<h3>Backup charges and restarts</h3>
+<p>To test a backup, give the parachute a second pyro channel on the Flight computer tab and have your firmware fire it too. When the first charge fails, the backup is graded with a little more room: up to 3 s later for an apogee deployment, or up to half the altitude lower for an altitude deployment. A backup that also fires on a normal flight is noted, not failed.</p>
+<p>In a restart test, Mockingbird asks the board to restart and the simulated rocket keeps flying while it boots. When it says it's ready, the test carries on from where the rocket is now; the firmware isn't told a new test started. A board passes if it comes back quickly and still does its job, which means keeping its flight phase and ground pressure in EEPROM or flash. If it comes back thinking it's on the pad, the result says so. Boards with USB built into the chip (Pico, ESP32-S3, Teensy) drop off USB while they restart; Mockingbird reopens the port when it comes back. A board that restarts by itself during any test fails that test.</p>
 <h3>Reading the result</h3>
 <ul>
   <li><b>Checks</b>: each deployment and ignition the rocket profile expects, with what happened. An apogee deployment must fire within 1 s early to 2 s late, an altitude deployment within 10% of its altitude, and so on. Change the limits on the Flight computer tab.</li>
   <li><b>What the flight computer reported</b>: how quickly it detected launch, burnout, apogee and landing, if your firmware sends those events.</li>
+  <li><b>Altitude and speed estimates</b>: if your firmware sends its altitude and speed with <code>hil.telemetry("alt", …, "vel", …)</code> (metres and m/s), they're compared with the truth from liftoff to landing, leaving out short faults and restarts. A test fails when they're typically off by more than 5% of apogee (at least 10 m) or 8% of top speed (at least 6 m/s), or when the peak altitude it read is that far off. Change the limits, or turn the grading off, on the Flight computer tab. Barometric altitude reads low on a warm day (the standard atmosphere assumes 15 °C); the result says when that's the cause. Numbers about 3.3 times too big mean feet were sent.</li>
   <li><b>The charts</b>: solid lines are the simulation's truth and dashed lines are what your board reported (send <code>alt</code> and <code>vel</code> with <code>hil.telemetry()</code>). The bottom chart shows exactly what was sent to the board, with fault windows shaded.</li>
   <li><b>Animation</b>: switch the Flight panel from <i>Charts</i> to <i>Animation</i> to watch the simulated rocket fly, live while the test runs or replayed for a finished or past run, with burns, apogee, deployments and fault events shown as they happen. Choose <b>3D</b> to see the flight over the launch site's real terrain (see <a href="#terrain">Terrain</a>). <b>Save video</b> saves the replay as a .webm video.</li>
   <li><b>Pyro timing</b>: for each output, how long after it should have fired the board decided to (and on which sample), how long the board took from reading that sample to firing, and the serial delay back to the PC. The board's own timing needs the MockingbirdHIL library from this version.</li>
   <li><b>Board received</b>: how many samples arrived intact. If some were damaged, call <code>hil.poll()</code> more often or lower the sample rate.</li>
+  <li><b>Print report</b>: a one-page report of the test, with every check, the altitude and speed charts, pyro timing and the faults injected. Choose <i>Save as PDF</i> in the print window for a file. After running ticked tests, <b>Print</b> next to the summary gives one page for the whole set.</li>
 </ul>
 <h3>Replay a real flight</h3>
 <p><b>Replay a log…</b> plays a real flight into the flight computer: any log Heron reads, from the Heron library, an Owl recording or a file. The board gets the barometer and accelerometer readings exactly as they were recorded, pad shakes included, from up to 20 seconds before liftoff to landing. Heron's analysis gives the real liftoff, burnout and apogee, and the rocket profile's deployment rules say when each output should have fired, so the result is graded like any test. Try it with your own flights, especially the ones that went wrong.</p>
@@ -252,7 +259,7 @@ $GPGGA,123519,4051.0007,N,11907.2026,W,1,09,0.9,1545.4,M,,,,*30   &lt;- straight
 
 <h2 id="source">Source code</h2>
 <p>The <code>Source</code> folder has everything: a small Go program per app (<code>cmd/</code>, <code>host/</code>) that serves the interface (<code>web/</code>) on this computer and opens it in Edge, the Arduino library, and the tests. To rebuild, install Go 1.24 or newer and run <code>build-windows.sh</code> (on Linux or macOS, or in Git Bash), or on Windows <code>go build -ldflags "-H windowsgui" -o Owl.exe ./cmd/owl</code>. The tests run with Node.js: <code>node --test tests/*.test.js</code>.</p>
-<p class="muted">Aviary 1.2.1. Map data © OpenStreetMap contributors.</p>
+<p class="muted">Aviary 1.3.0. Map data © OpenStreetMap contributors.</p>
 </main>
 </body>
 </html>

@@ -120,7 +120,8 @@ export class SerialLink {
 
   _teardown() {
     this.open = false;
-    try { this.reader && this.reader.cancel(); } catch { /* */ }
+    // cancel() rejects on a lost device; that's expected here
+    try { this.reader?.cancel().catch(() => {}); } catch { /* */ }
     try { this.writer && this.writer.releaseLock(); } catch { /* */ }
     this.writer = null;
     const p = this.port; this.port = null;

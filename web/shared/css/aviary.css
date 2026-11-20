@@ -298,3 +298,59 @@ table.data input, table.data select { height: 28px; }
 .fv-time { font-size: 12px; color: var(--graphite); min-width: 120px; text-align: right; }
 .fv-3d { display: inline-flex; gap: 6px; align-items: center; }
 .fv-3d.hidden { display: none; }
+
+/* one-page printed reports (Heron's flight report, Mockingbird's test reports): built when printing, hidden on screen */
+#print-report { display: none; }
+@media print {
+  @page { size: auto; margin: 11mm 12mm; }
+  body > *:not(#print-report) { display: none !important; }
+  body > #print-report { display: block !important; }
+  #print-report { color: #16202a; background: #fff; font-family: var(--font); font-size: 9.5pt; line-height: 1.35; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  #print-report header { display: grid; grid-template-columns: 34px 1fr auto; gap: 12px; align-items: center; padding-bottom: 8px; border-bottom: 1.5px solid #16202a; }
+  #print-report .pr-logo { width: 34px; height: 34px; color: #16202a; display: block; }
+  #print-report .pr-logo svg { width: 34px; height: 34px; }
+  #print-report .pr-kicker { font-size: 8pt; letter-spacing: 0.08em; text-transform: uppercase; color: #ff5a1f; font-weight: 600; }
+  #print-report h1 { margin: 0; font-size: 16pt; font-weight: 600; font-stretch: 87.5%; }
+  #print-report .pr-meta { text-align: right; font-size: 8pt; color: #56626c; }
+  #print-report .pr-verdict { margin: 8px 0 0; padding: 6px 9px; border-left: 3px solid #ff5a1f; background: #fff4ee; }
+  #print-report .pr-nums { display: grid; grid-template-columns: repeat(auto-fill, minmax(1.45in, 1fr)); gap: 0; margin: 8px 0; border-top: 1px solid #cdd5d8; border-left: 1px solid #cdd5d8; }
+  #print-report .pr-num { padding: 4px 8px 5px; border-right: 1px solid #cdd5d8; border-bottom: 1px solid #cdd5d8; }
+  #print-report .pr-num .k { font-size: 7.5pt; color: #56626c; text-transform: uppercase; letter-spacing: 0.04em; }
+  #print-report .pr-num .v { font-size: 13pt; font-weight: 600; font-stretch: 87.5%; white-space: nowrap; }
+  #print-report .pr-num .v small { font-size: 8pt; font-weight: 400; color: #56626c; }
+  #print-report .pr-charts figure { margin: 0 0 4px; break-inside: avoid; }
+  #print-report .pr-charts figcaption { font-size: 8pt; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: #56626c; margin: 2px 0 0; }
+  #print-report .pr-charts img { width: 100%; height: auto; display: block; }
+  #print-report .pr-cols { display: grid; grid-template-columns: 1fr 1.35fr; gap: 16px; margin-top: 6px; break-inside: avoid; }
+  #print-report h2 { font-size: 8pt; text-transform: uppercase; letter-spacing: 0.05em; color: #56626c; margin: 0 0 4px; border-bottom: 1px solid #cdd5d8; padding-bottom: 2px; }
+  #print-report table { border-collapse: collapse; width: 100%; font-size: 8.5pt; }
+  #print-report td { padding: 1.5px 0; vertical-align: top; }
+  #print-report td.t { width: 0.8in; font-family: var(--mono); font-size: 8pt; color: #56626c; white-space: nowrap; }
+  #print-report .pr-health { list-style: none; margin: 0; padding: 0; font-size: 8.5pt; }
+  #print-report .pr-health li { padding: 1.5px 0 1.5px 12px; position: relative; }
+  #print-report .pr-health li::before { content: ""; position: absolute; left: 0; top: 5.5px; width: 6px; height: 6px; border-radius: 50%; background: #1f8a4c; }
+  #print-report .pr-health li.warn::before { background: #a8690f; }
+  #print-report .pr-health li.bad::before { background: #c8242f; }
+  #print-report .pr-health span { color: #56626c; }
+  #print-report footer { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 4px; border-top: 1px solid #cdd5d8; font-size: 7.5pt; color: #8a959d; }
+  /* Mockingbird's test reports */
+  #print-report .pr-verdict.pass { border-left-color: #1f8a4c; background: #eef8f2; }
+  #print-report .pr-verdict.fail { border-left-color: #c8242f; background: #fdf0f0; }
+  #print-report .pr-verdict b { font-size: 12pt; margin-right: 8px; }
+  #print-report .pr-verdict.pass b { color: #1f8a4c; }
+  #print-report .pr-verdict.fail b { color: #c8242f; }
+  #print-report h2.pr-h { margin-top: 10px; }
+  #print-report th { text-align: left; font-size: 7.5pt; font-weight: 600; color: #56626c; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 6px 2px 0; border-bottom: 1px solid #cdd5d8; }
+  #print-report .pr-checks td { padding: 2.5px 6px 2.5px 0; border-top: 1px solid #e4e9eb; }
+  #print-report .pr-checks tr.det td { border-top: 0; padding-top: 0; color: #56626c; font-size: 8pt; }
+  #print-report .pr-checks td.ic { width: 14px; font-weight: 700; }
+  #print-report .pr-checks tr.ok td.ic { color: #1f8a4c; }
+  #print-report .pr-checks tr.bad td.ic { color: #c8242f; }
+  #print-report .pr-suite tr.ok + tr.ok td, #print-report .pr-suite tr.bad td { border-top: 1px solid #e4e9eb; }
+  #print-report .pr-charts { margin-top: 8px; }
+  #print-report .pr-cols section { margin-bottom: 8px; break-inside: avoid; }
+  #print-report .pr-small td { padding: 1.5px 6px 1.5px 0; }
+  #print-report .pr-kv { display: grid; grid-template-columns: auto 1fr; gap: 1.5px 10px; font-size: 8.5pt; }
+  #print-report .pr-kv .k { color: #56626c; }
+  #print-report .pr-list { margin: 0; padding-left: 14px; font-size: 8.5pt; }
+}

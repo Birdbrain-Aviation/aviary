@@ -160,7 +160,7 @@ export function renderSetup(el, ctx) {
   drawRules();
 
   // ---------------------------------------------------------- tolerances
-  const T = set.run.tol;
+  const T = (set.run.tol = { ...DEFAULT_TOL, ...(set.run.tol || {}) });
   const num = (label, key, unit, conv, title) => numField(label, conv ? +conv.to(T[key]).toFixed(1) : T[key], unit, (v) => { if (v === null) return; T[key] = conv ? conv.from(v) : v; save(); }, { title });
   const altConv = { to: (m) => D.alt(m), from: (x) => D.fromAlt(x) };
   const velConv = { to: (v) => D.vel(v), from: (x) => D.fromVel(x) };
@@ -175,6 +175,20 @@ export function renderSetup(el, ctx) {
       num("Ignition: early by", "igniteEarly", "s", null, "For upper-stage ignition"),
       num("Ignition: late by", "igniteLate", "s", null, "For upper-stage ignition"),
       num("Safe landing speed", "safeLanding", D.velUnit, velConv)),
+    h("div", { class: "sub-title" }, "Backup charges"),
+    h("p", { class: "note", style: { margin: 0 } }, "When a charge doesn't go off, the backup that deploys the same device may fire later or lower than the plan."),
+    h("div", { class: "grid-form" },
+      num("Backup: later by", "backupLate", "s", null, "Extra time allowed for a backup charge"),
+      num("Backup: lower by", "backupAltFrac", "%", pctConv, "Of the target altitude, for a backup on an altitude deployment"),
+      num("Back after a restart in", "restartBack", "s", null, "How long the board may take to boot in a restart test")),
+    h("div", { class: "sub-title" }, "The flight computer's own altitude and speed"),
+    h("p", { class: "note", style: { margin: 0 } }, "Scored when the board sends them with hil.telemetry(\"alt\", …, \"vel\", …) in metres and m/s. Short faults and restarts are left out."),
+    h("div", { class: "grid-form" },
+      h("div", { class: "field" }, h("span", null, "Grade them"), checkField("Fail a test when they're off", T.gradeEstimates !== false, (v) => { T.gradeEstimates = v; save(); })),
+      num("Altitude: off by", "estAltFrac", "%", pctConv, "Typical error allowed, as a share of apogee"),
+      num("…or at least", "estAlt", D.altUnit, altConv, "Altitude error that is always allowed"),
+      num("Speed: off by", "estVelFrac", "%", pctConv, "Typical error allowed, as a share of top speed"),
+      num("…or at least", "estVel", D.velUnit, velConv, "Speed error that is always allowed")),
     h("div", null, h("button", { class: "btn small ghost", onclick: () => { set.run.tol = { ...DEFAULT_TOL }; save(); renderSetup(el, ctx); } }, "Restore the usual limits")));
 
   // ---------------------------------------------------------- library help
@@ -196,6 +210,8 @@ void loop() {
   // ... your flight logic ...
   // when it decides to fire a channel:
   //   if (hil.active()) hil.pyro(1);  else firePyro(1);
+  // its own estimates, scored against the truth (metres, m/s):
+  //   hil.telemetry("alt", altitude, "vel", velocity);
 }`;
   const lib = h("div", { class: "panel-body col", style: { gap: "8px" } },
     h("p", { style: { margin: 0 } }, "The ", h("b", null, "MockingbirdHIL"), " library is in the Arduino folder of the download. Copy it into Documents\\Arduino\\libraries, restart the Arduino IDE, and open File › Examples › MockingbirdHIL."),
@@ -234,15 +250,17 @@ export function editTest(test, { rocket, isNew, onSave, onDelete }) {
       const typeSel = selectField("Fault", fl.type, Object.entries(FAULT_TYPES).map(([k, v]) => [k, v.label]), (v) => { t.faults[i] = newFault(v); draw(); });
       const fields = [typeSel];
       if (!T.whole) {
+        const instant = !!T.instant;
         let sign = (Number(fl.offset) || 0) < 0 ? -1 : 1;
         fields.push(numField("Starts", Math.abs(Number(fl.offset) || 0), "s", (v) => { fl.offset = sign * Math.abs(v ?? 0); }, { min: 0 }));
         fields.push(selectField("", sign < 0 ? "before" : "after", [["before", "before"], ["after", "after"]], (v) => { sign = v === "before" ? -1 : 1; fl.offset = sign * Math.abs(Number(fl.offset) || 0); }));
         fields.push(selectField("", fl.ref === "whole" ? "liftoff" : fl.ref, FAULT_REFS, (v) => { fl.ref = v; }));
-        fields.push(numField(T.holds ? "Drifts for" : "Lasts", fl.duration, "s", (v) => { fl.duration = Math.max(0, v ?? 0); }, { min: 0 }));
+        if (!instant) fields.push(numField(T.holds ? "Drifts for" : "Lasts", fl.duration, "s", (v) => { fl.duration = Math.max(0, v ?? 0); }, { min: 0 }));
       }
       for (const p of T.params) {
         if (p.kind === "sensor") fields.push(selectField(p.label, fl.params[p.key], SENSORS, (v) => { fl.params[p.key] = v; }));
         else if (p.kind === "stage") fields.push(selectField(p.label, fl.params[p.key], stageOpts, (v) => { fl.params[p.key] = Number(v); }));
+        else if (p.kind === "device") fields.push(selectField(p.label, fl.params[p.key] || "apogee", [["apogee", "The apogee deployment"], ...(rocket.recovery || []).filter((d) => d.deploy !== "motor").map((d) => [d.id, d.name])], (v) => { fl.params[p.key] = v; }));
         else fields.push(numField(p.label, fl.params[p.key], p.unit, (v) => { fl.params[p.key] = v ?? p.value; }));
       }
       list.append(h("div", { class: "rk-card" },

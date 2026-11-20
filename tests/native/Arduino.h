@@ -33,6 +33,7 @@ class Print {
  public:
   virtual ~Print() {}
   virtual size_t write(uint8_t c) = 0;
+  virtual void flush() {}
   size_t print(const char* s) { size_t n = 0; while (*s) n += write((uint8_t)*s++); return n; }
   size_t print(const __FlashStringHelper* s) { return print(reinterpret_cast<const char*>(s)); }
   size_t print(char c) { return write((uint8_t)c); }
@@ -66,6 +67,7 @@ class StdioSerial : public Stream {
   int available() override { fill(); return n_ - i_; }
   int read() override { fill(); return i_ < n_ ? (unsigned char)buf_[i_++] : -1; }
   size_t write(uint8_t c) override { fputc(c, stdout); if (c == '\n') fflush(stdout); return 1; }
+  void flush() override { fflush(stdout); }
   bool closed() const { return eof_ && i_ >= n_; }
   explicit operator bool() const { return true; }
 

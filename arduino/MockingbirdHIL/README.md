@@ -45,6 +45,7 @@ void loop() {
 | `poll()` | Reads serial. `true` when a new sample arrived (one per call). |
 | `active()` | `true` while a test runs. Use real sensors and real pyros when `false`. |
 | `testStarted()`, `testEnded()` | `true` once at the start and end of each test. |
+| `resumed()` | `true` once when a test carries on after the board restarted mid-flight (see [Restarts](#restarts)). |
 | `millis()` | Simulated clock during a test, `::millis()` otherwise. Use it and tests can run faster than real time. |
 | `sampleTime()` | Time of the latest sample, ms since the test started. |
 | `pressure()`, `temperature()` | Pa, °C. |
@@ -64,10 +65,49 @@ A value is `NAN` when it wasn't sent, or during a sensor dropout fault.
 | `pyro(n)` | `$MBE,PYRO,n,ms,us` | Fires whatever channel *n* is wired to in the simulation. It also sends the time of the sample the board acted on and the microseconds from reading that sample to firing, for the pyro timing table. |
 | `event(F("APOGEE"))` | `$MBE,APOGEE` | Detection timing. Also `LAUNCH`, `BURNOUT`, `LANDED`. |
 | `state(F("COAST"))` | `$MBE,STATE,COAST` | Shown live and in the event list. |
-| `telemetry("alt", a, "vel", v)` | `$MBT,alt,a,vel,v` | Drawn as dashed lines against the true flight. Use names `alt` and `vel`. |
+| `telemetry("alt", a, "vel", v)` | `$MBT,alt,a,vel,v` | Drawn as dashed lines against the true flight, and scored: the result shows how far off the board's altitude and speed were, and a test fails when they're off by more than the limits on the Flight computer tab. Use names `alt` and `vel`, in **metres** and **m/s**. |
 | `log(F("text"))` | `$MBL,text` | A note in the event list. |
 
 Reports are only sent while a test is running, so a real flight's serial output stays clean. `DROGUE`, `MAIN`, `IGNITE` and `SEPARATE` events also work instead of pyro channel numbers.
+
+## Restarts
+
+The **Restart while coasting** test (and any test with a *Flight computer restarts* fault) checks what happens after a brownout or a watchdog reset in flight. Mockingbird sends `$MBC,REBOOT`, and the library answers `$MBE,RESTARTING` and restarts the board:
+
+| Board | How |
+|---|---|
+| AVR (Uno, Nano, Mega) | the watchdog |
+| ESP32, ESP8266 | `ESP.restart()` |
+| RP2040, RP2350 (Earle Philhower core) | `rp2040.reboot()` |
+| Any other ARM Cortex-M (STM32, SAMD, nRF52, Teensy, Mbed cores) | a system reset |
+
+The simulated rocket keeps flying while the board boots. When it says `READY` again, Mockingbird sends `$MBC,RESUME` instead of `START`, so `testStarted()` stays false: from the firmware's point of view it has just woken up mid-flight, exactly as it would after a real brownout. Boards with USB built into the chip drop off USB while they restart; Mockingbird waits for the port to come back and reopens it.
+
+A board passes when it carries on. Everything in RAM is gone, so the flight computer has to keep what it needs somewhere that survives a reset (EEPROM on AVR, `Preferences` on ESP32, flash on RP2040 and STM32):
+
+```cpp
+struct Saved { uint8_t magic, phase; float groundPressure; uint32_t launchMs; uint8_t fired; };
+
+void save() { /* write Saved to EEPROM / flash when the phase changes or a channel fires */ }
+
+void setup() {
+  // ...
+  Saved s = load();
+  if (s.magic == 0xB1 && s.phase != PAD && s.phase != LANDED) {
+    phase = s.phase; p0 = s.groundPressure; launchT = s.launchMs; fired = s.fired;
+    seedFilterFromCurrentAltitude = true;   // don't start the filter at zero
+  }
+}
+// Clear it in testStarted() and after landing.
+```
+
+The virtual flight computer in Mockingbird works this way; the MockingbirdTry example deliberately doesn't, so you can see the test catch it.
+
+If your board needs something else to restart (an external watchdog, a power switch), define your own `void mbRestart() { ... }` in the sketch and the library uses it. On a Nano with the old bootloader, a watchdog reset can loop; flash the newer bootloader or define `mbRestart()`.
+
+## Backup charges
+
+To test a backup, give the device a second pyro channel on Mockingbird's Flight computer tab and have the firmware fire it too (a second later for the drogue, or lower for the main). The **Drogue charge doesn't go off** test makes the first charge fired for the apogee device do nothing, like an open e-match; it passes only if the backup deploys the parachute.
 
 ## Tips
 
@@ -85,7 +125,9 @@ PC → board   $MBC,START,<samples per second>,<time scale>*HH
              $MBD,<value>,<value>,...*HH        one sample, in header order
              $MBC,STOP*HH
              $MBC,PING*HH                       board answers $MBE,PONG,<name>
-board → PC   $MBE,<EVENT>[,<value>]             READY, PYRO, APOGEE, STATE, STATS...
+             $MBC,REBOOT*HH                     board answers $MBE,RESTARTING and restarts
+             $MBC,RESUME,<rate>,<time scale>*HH carry on after a restart (no testStarted)
+board → PC   $MBE,<EVENT>[,<value>]             READY, PYRO, APOGEE, STATE, STATS, RESTARTING, NORESTART...
              $MBT,<name>,<value>[,<name>,<value>...]
              $MBL,<text>
 ```

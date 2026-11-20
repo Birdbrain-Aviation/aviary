@@ -69,3 +69,17 @@ test("the integration template answers, stays quiet and never touches a pin", { 
   assert.match(stderr, /pin writes: 2\b/, "only the two LOW writes in setup()");
   assert.equal(rep.verdict, "fail", "it has no flight logic yet, so nothing deploys");
 });
+
+test("a restart mid-flight really restarts the sketch, and the test resumes", { skip: !haveBins && "build the native examples first" }, async () => {
+  const t = defaultTests().find((x) => x.id === "reboot-coast");
+  const { rep, lines, stderr } = await runAgainstSketch("MockingbirdTry", exampleRockets()[0], { faults: t.faults });
+  console.log(rep.verdict, rep.checks.map((c) => `${c.label}: ${c.actual} ${c.ok ? "ok" : "FAIL " + c.detail}`), rep.reboots);
+  assert.match(stderr, /restarting/, "the program re-ran itself");
+  assert.equal(lines.filter((l) => /^\$MBE,READY/.test(l)).length, 2, "it said READY again after restarting");
+  assert.ok(lines.some((l) => l.startsWith("$MBE,RESTARTING")));
+  const r = rep.checks.find((c) => c.label === "Restart");
+  assert.ok(r && r.ok, "it came back quickly");
+  // the example keeps nothing across a restart, so it wakes up thinking it's on the pad
+  assert.equal(rep.verdict, "fail");
+  assert.match(r.detail, /forgot it was flying|save the flight phase/i);
+});

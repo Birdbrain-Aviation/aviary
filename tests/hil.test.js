@@ -148,3 +148,97 @@ test("Monte Carlo: varied flights against the virtual flight computer", async ()
   assert.ok(s.passRate > 0.8);
   assert.ok(s.apogee.max > s.apogee.min);
 });
+
+// ---------------------------------------------------------------- 1.3: duds, restarts, estimates
+import { runVirtual as runV, defaultTests as defTests, defaultPyro as defPyro, HILRun as Run, VirtualFC as VFC } from "../web/shared/js/hil.js";
+import { exampleRockets as rockets } from "../web/shared/js/rockets.js";
+
+const R0 = rockets()[0];
+const SITE = { elevation: 120, tempC: 20 };
+const faultsOf = (id) => structuredClone(defTests(R0).find((t) => t.id === id).faults);
+const withBackups = () => {
+  const p = defPyro(R0);
+  for (const d of R0.recovery.filter((x) => x.deploy !== "motor")) p.push({ ch: 10 + p.length, action: { type: "deploy", id: d.id } });
+  return p;
+};
+
+test("a charge that doesn't go off fails the test unless a backup deploys the device", () => {
+  const noBackup = runV({ rocket: R0, site: SITE, cfg: { rate: 50, padTime: 5, pyro: defPyro(R0) }, faults: faultsOf("drogue-dud"), seed: 3 });
+  const c = noBackup.checks.find((x) => x.label.startsWith("Drogue"));
+  assert.equal(noBackup.verdict, "fail");
+  assert.equal(c.actual, "charge didn't go off");
+  assert.match(c.detail, /backup/i);
+  const backed = runV({ rocket: R0, site: SITE, cfg: { rate: 50, padTime: 5, pyro: withBackups() }, faults: faultsOf("drogue-dud"), seed: 3 });
+  const b = backed.checks.find((x) => x.label.startsWith("Drogue"));
+  assert.equal(backed.verdict, "pass", JSON.stringify(backed.checks));
+  assert.ok(b.ok && /backup on pyro/.test(b.detail));
+  assert.ok(b.ch >= 10, "the check reports the backup's channel");
+});
+
+test("backups firing on a normal flight are noted, not failed", () => {
+  const rep = runV({ rocket: R0, site: SITE, cfg: { rate: 50, padTime: 5, pyro: withBackups() }, faults: [], seed: 4 });
+  assert.equal(rep.verdict, "pass");
+  assert.ok(rep.checks.some((c) => /Backup on pyro \d+ also fired/.test(c.detail)));
+});
+
+test("the virtual board restarts mid-flight, resumes from its saved state and passes", () => {
+  const rep = runV({ rocket: R0, site: SITE, cfg: { rate: 50, padTime: 5, pyro: defPyro(R0) }, faults: faultsOf("reboot-coast"), seed: 5 });
+  const r = rep.checks.find((c) => c.label === "Restart");
+  assert.ok(r && r.ok, JSON.stringify(rep.checks));
+  assert.equal(rep.reboots.length, 1);
+  assert.equal(rep.reboots[0].resumedAs, "COAST");
+  assert.equal(rep.verdict, "pass", JSON.stringify(rep.checks));
+});
+
+test("a board that never answers the restart request is told to update the library", () => {
+  let fc = null;
+  const run = new Run({ rocket: R0, site: SITE, cfg: { rate: 50, padTime: 5, pyro: defPyro(R0) }, faults: faultsOf("reboot-coast"), send: (l) => fc && !/REBOOT/.test(l) && fc.receive(l) });
+  fc = new VFC({ rocket: R0, pyro: defPyro(R0), send: (l) => run.handleLine(l) });
+  run.start();
+  for (let t = 0; !run.done && t < 200; t += 0.1) run.advanceTo(t);
+  const rep = run.report();
+  const r = rep.checks.find((c) => c.label === "Restart");
+  assert.equal(r.ok, false);
+  assert.match(r.detail, /1\.2 or newer/);
+});
+
+test("a restart nobody asked for fails the test", () => {
+  let fc = null, said = false;
+  const run = new Run({ rocket: R0, site: SITE, cfg: { rate: 50, padTime: 5, pyro: defPyro(R0) }, send: (l) => fc && fc.receive(l) });
+  fc = new VFC({ rocket: R0, pyro: defPyro(R0), send: (l) => run.handleLine(l) });
+  run.start();
+  for (let t = 0; !run.done && t < 200; t += 0.1) {
+    run.advanceTo(t);
+    if (!said && run.sim.liftoff !== null && run.sim.t - run.sim.liftoff > 3) { said = true; run.handleLine("$MBE,READY,board"); }
+  }
+  const rep = run.report();
+  assert.equal(rep.verdict, "fail");
+  assert.ok(rep.checks.some((c) => c.label === "Unexpected restart" && !c.ok));
+});
+
+test("the board's altitude and speed are scored, and feet are spotted", () => {
+  const ok = runV({ rocket: R0, site: SITE, cfg: { rate: 50, padTime: 5, pyro: defPyro(R0) }, faults: [], seed: 6 });
+  assert.ok(ok.estimates.alt.rms < 15 && ok.estimates.vel.rms < 6, JSON.stringify(ok.estimates));
+  assert.ok(ok.checks.find((c) => c.label === "Altitude estimate").ok);
+  let fc = null;
+  const run = new Run({ rocket: R0, site: SITE, cfg: { rate: 50, padTime: 5, pyro: defPyro(R0) }, send: (l) => fc && fc.receive(l) });
+  fc = new VFC({ rocket: R0, pyro: defPyro(R0), send: (l) => run.handleLine(l.replace(/^\$MBT,alt,([-\d.]+)/, (_, v) => `$MBT,alt,${(Number(v) * 3.2808).toFixed(2)}`)) });
+  run.start();
+  for (let t = 0; !run.done && t < 200; t += 0.1) run.advanceTo(t);
+  const rep = run.report();
+  const c = rep.checks.find((x) => x.label === "Altitude estimate");
+  assert.equal(c.ok, false);
+  assert.match(c.detail, /metres/);
+});
+
+test("estimate grading can be turned off", () => {
+  let fc = null;
+  const cfg = { rate: 50, padTime: 5, pyro: defPyro(R0), tol: { gradeEstimates: false } };
+  const run = new Run({ rocket: R0, site: SITE, cfg, send: (l) => fc && fc.receive(l) });
+  fc = new VFC({ rocket: R0, pyro: defPyro(R0), send: (l) => run.handleLine(l.replace(/^\$MBT,alt,([-\d.]+)/, (_, v) => `$MBT,alt,${(Number(v) * 3.2808).toFixed(2)}`)) });
+  run.start();
+  for (let t = 0; !run.done && t < 200; t += 0.1) run.advanceTo(t);
+  const rep = run.report();
+  assert.ok(!rep.checks.some((x) => x.label === "Altitude estimate"));
+  assert.ok(rep.detections.some((d) => d.label === "Its altitude"));
+});

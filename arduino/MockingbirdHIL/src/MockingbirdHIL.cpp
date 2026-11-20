@@ -2,6 +2,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+#if defined(__AVR__)
+#include <avr/wdt.h>
+#endif
 
 // Field names in the order of MockingbirdHIL::Field (starting at T_MS = 1).
 #if defined(__AVR__)
@@ -57,7 +60,7 @@ static int32_t mbParseE7(const char* s, bool* ok) {
 }
 
 MockingbirdHIL::MockingbirdHIL(Stream& port)
-    : _port(port), _name("flight computer"), _len(0), _overflow(false), _active(false), _started(false), _ended(false),
+    : _port(port), _name("flight computer"), _len(0), _overflow(false), _active(false), _started(false), _ended(false), _resumed(false),
       _ncols(0), _latE7(0), _lonE7(0), _tms(0), _rxAt(0), _rxUs(0), _lastRx(0), _lastStats(0), _lastClock(0),
       _rate(50), _scale(1.0f), _good(0), _bad(0) {
   memset(_map, 0, sizeof(_map));
@@ -99,6 +102,7 @@ bool MockingbirdHIL::poll() {
 
 bool MockingbirdHIL::testStarted() { bool r = _started; _started = false; return r; }
 bool MockingbirdHIL::testEnded() { bool r = _ended; _ended = false; return r; }
+bool MockingbirdHIL::resumed() { bool r = _resumed; _resumed = false; return r; }
 
 bool MockingbirdHIL::_handle(char* s) {
   if (s[0] != '$' || s[1] != 'M' || s[2] != 'B' || s[3] == 0 || s[4] != ',') return false;  // not for us
@@ -160,7 +164,8 @@ void MockingbirdHIL::_header(char* s) {
 }
 
 void MockingbirdHIL::_control(char* s) {
-  if (!strncmp(s, "START", 5)) {
+  bool start = !strncmp(s, "START", 5), resume = !strncmp(s, "RESUME", 6);
+  if (start || resume) {
     uint16_t rate = 50;
     float scale = 1.0f;
     char* p = strchr(s, ',');
@@ -169,7 +174,10 @@ void MockingbirdHIL::_control(char* s) {
       char* q = strchr(p + 1, ',');
       if (q) scale = (float)atof(q + 1);
     }
-    _start(rate > 0 ? rate : 50, scale > 0 ? scale : 1.0f);
+    if (start) _start(rate > 0 ? rate : 50, scale > 0 ? scale : 1.0f);
+    else _resume(rate > 0 ? rate : 50, scale > 0 ? scale : 1.0f);
+  } else if (!strncmp(s, "REBOOT", 6)) {
+    _restart();
   } else if (!strncmp(s, "STOP", 4)) {
     if (_active) _stop();
   } else if (!strncmp(s, "PING", 4)) {
@@ -190,6 +198,27 @@ void MockingbirdHIL::_start(uint16_t rate, float scale) {
   _lastClock = 0;
   _clearValues();
   _rxAt = _lastRx = _lastStats = ::millis();
+}
+
+// After a restart mid-test: carry on without telling the firmware a new test began.
+void MockingbirdHIL::_resume(uint16_t rate, float scale) {
+  _start(rate, scale);
+  _started = false;
+  _resumed = true;
+}
+
+// Mockingbird asked for a restart. Say so first, so it can tell an old library
+// (which ignores the request) from a board that restarts and doesn't come back.
+void MockingbirdHIL::_restart() {
+  _tag(F("$MBE,RESTARTING"));
+  _port.println();
+  _port.flush();
+  delay(20);
+  mbRestart();
+  // still here: this board has no way to restart that the library knows
+  _tag(F("$MBE,NORESTART"));
+  _port.println();
+  log(F("Define mbRestart() in your sketch to restart this board"));
 }
 
 void MockingbirdHIL::_stop() {
@@ -325,4 +354,28 @@ void MockingbirdHIL::log(const __FlashStringHelper* text) {
   if (!_active) return;
   _tag(F("$MBL,"));
   _port.println(text);
+}
+
+// ---- restarting the board ----
+#if defined(MB_NATIVE_TEST)
+extern void mbNativeRestart();
+#endif
+
+__attribute__((weak)) void mbRestart() {
+#if defined(MB_NATIVE_TEST)
+  mbNativeRestart();
+#elif defined(__AVR__)
+  wdt_enable(WDTO_15MS);            // let the watchdog reset the chip
+  for (;;) {}
+#elif defined(ESP32) || defined(ESP8266)
+  ESP.restart();
+#elif defined(ARDUINO_ARCH_RP2040) && !defined(ARDUINO_ARCH_MBED)
+  rp2040.reboot();
+#elif defined(__arm__) && defined(__ARM_ARCH_PROFILE) && (__ARM_ARCH_PROFILE == 'M')
+  // any Cortex-M (STM32, SAMD, nRF52, Teensy, Mbed): SYSRESETREQ in SCB->AIRCR
+  __asm__ volatile("dsb" ::: "memory");
+  *(volatile uint32_t*)0xE000ED0CUL = 0x05FA0004UL;
+  __asm__ volatile("dsb" ::: "memory");
+  for (;;) {}
+#endif
 }
